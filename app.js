@@ -769,7 +769,11 @@ async function saveNewItem() {
     const price = parseFloat(document.getElementById('inputPrice').value) || null;
     const category = document.getElementById('inputCategory').value;
     const expiry_date = document.getElementById('inputExpiry').value || null;
-    if (!name) return;
+    
+    if (!name) {
+        alert("Please enter or scan an item name.");
+        return;
+    }
 
     await supabaseClient.from('shopping_list').insert({ 
         household_id: DEFAULT_HOUSEHOLD_ID, 
@@ -780,6 +784,7 @@ async function saveNewItem() {
         expiry_date,
         is_bought: false 
     });
+    
     closeAddModal();
 }
 
