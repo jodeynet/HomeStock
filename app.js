@@ -10,6 +10,7 @@ let tripHistoryOpen = false;
 let expiryAlertFilterActive = false;
 let collapsedCategories = {};
 let currentHubTab = 'expiry';
+let currentMobileTab = null;
 
 function parseTags(rawTags) {
     if (!rawTags) return [];
@@ -56,12 +57,15 @@ function renderLandscape() {
     renderPantry();
     renderSmartHub();
     renderExpiryHeaderBadge();
+    handleResponsiveLayout();
 }
 
 function renderTimeGreeting() {
     const hour = new Date().getHours();
     const textEl = document.getElementById('timeGreetingText');
     const iconEl = document.getElementById('timeGreetingIcon');
+
+    if (!textEl || !iconEl) return;
 
     if (hour >= 5 && hour < 12) {
         textEl.innerText = "Good morning";
@@ -77,6 +81,8 @@ function renderTimeGreeting() {
 
 function renderExpiryHeaderBadge() {
     const container = document.getElementById('expiryHeaderBadgeContainer');
+    if (!container) return;
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -121,6 +127,8 @@ function renderShopping() {
     const tripHistoryToggleText = document.getElementById('tripHistoryToggleText');
     const runningTotalPill = document.getElementById('runningTotalPill');
     const cartSubtotalValue = document.getElementById('cartSubtotalValue');
+
+    if (!toBuyList || !boughtList) return;
 
     toBuyList.innerHTML = '';
     boughtList.innerHTML = '';
@@ -211,6 +219,8 @@ function renderPantry() {
     const container = document.getElementById('pantryCategoriesContainer');
     const searchQuery = (document.getElementById('pantrySearchInput')?.value || '').toLowerCase().trim();
     
+    if (!container) return;
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -336,13 +346,19 @@ function toggleCategory(catName) {
 // --- SMART HOME HUB RENDERER ---
 function switchHubTab(tabName) {
     currentHubTab = tabName;
-    document.getElementById('hubTabExpiry').classList.toggle('hidden', tabName !== 'expiry');
-    document.getElementById('hubTabFrequent').classList.toggle('hidden', tabName !== 'frequent');
-    document.getElementById('hubTabNotes').classList.toggle('hidden', tabName !== 'notes');
+    const tabExpiry = document.getElementById('hubTabExpiry');
+    const tabFrequent = document.getElementById('hubTabFrequent');
+    const tabNotes = document.getElementById('hubTabNotes');
 
-    document.getElementById('tabBtnExpiry').className = `flex-1 py-2 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5 ${tabName === 'expiry' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`;
-    document.getElementById('tabBtnFrequent').className = `flex-1 py-2 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5 ${tabName === 'frequent' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`;
-    document.getElementById('tabBtnNotes').className = `flex-1 py-2 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5 ${tabName === 'notes' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`;
+    if (!tabExpiry || !tabFrequent || !tabNotes) return;
+
+    tabExpiry.classList.toggle('hidden', tabName !== 'expiry');
+    tabFrequent.classList.toggle('hidden', tabName !== 'frequent');
+    tabNotes.classList.toggle('hidden', tabName !== 'notes');
+
+    document.getElementById('tabBtnExpiry').className = `flex-1 py-2 text-[11px] sm:text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1 ${tabName === 'expiry' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`;
+    document.getElementById('tabBtnFrequent').className = `flex-1 py-2 text-[11px] sm:text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1 ${tabName === 'frequent' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`;
+    document.getElementById('tabBtnNotes').className = `flex-1 py-2 text-[11px] sm:text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1 ${tabName === 'notes' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`;
 }
 
 function renderSmartHub() {
@@ -353,6 +369,7 @@ function renderSmartHub() {
 
 function renderExpiryRadar() {
     const container = document.getElementById('hubTabExpiry');
+    if (!container) return;
     container.innerHTML = '';
 
     const today = new Date();
@@ -362,7 +379,7 @@ function renderExpiryRadar() {
         if (!item.expiry_date) return false;
         const expiryDate = new Date(item.expiry_date);
         const diffDays = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-        return diffDays <= 5; // Show items expiring within 5 days or already expired
+        return diffDays <= 5;
     }).sort((a, b) => new Date(a.expiry_date) - new Date(b.expiry_date));
 
     if (expiringItems.length === 0) {
@@ -418,9 +435,9 @@ function renderExpiryRadar() {
 
 function renderFrequentBuys() {
     const container = document.getElementById('hubTabFrequent');
+    if (!container) return;
     container.innerHTML = '';
 
-    // Count frequencies from past trips
     const counts = {};
     pastTrips.forEach(trip => {
         (trip.items || []).forEach(rawStr => {
@@ -487,6 +504,62 @@ function saveHouseholdNotes() {
         statusEl.innerText = "Synced";
     }, 1500);
 }
+
+// --- MOBILE TAB SWITCHER ---
+function switchMobileTab(tab) {
+    const shoppingSec = document.getElementById('sectionShopping');
+    const pantrySec = document.getElementById('sectionPantry');
+    const hubSec = document.getElementById('sectionHub');
+
+    const navShopping = document.getElementById('navBtnShopping');
+    const navPantry = document.getElementById('navBtnPantry');
+    const navHub = document.getElementById('navBtnHub');
+
+    if (!shoppingSec || !pantrySec || !hubSec) return;
+
+    shoppingSec.classList.add('hidden');
+    pantrySec.classList.add('hidden');
+    hubSec.classList.add('hidden');
+
+    navShopping.className = "flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition py-1 px-3";
+    navPantry.className = "flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition py-1 px-3";
+    navHub.className = "flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition py-1 px-3";
+
+    currentMobileTab = tab;
+
+    if (tab === 'shopping') {
+        shoppingSec.classList.remove('hidden');
+        navShopping.className = "flex flex-col items-center gap-1 text-blue-400 transition py-1 px-3";
+    } else if (tab === 'pantry') {
+        pantrySec.classList.remove('hidden');
+        navPantry.className = "flex flex-col items-center gap-1 text-indigo-400 transition py-1 px-3";
+    } else if (tab === 'hub') {
+        hubSec.classList.remove('hidden');
+        navHub.className = "flex flex-col items-center gap-1 text-amber-400 transition py-1 px-3";
+    }
+}
+
+function handleResponsiveLayout() {
+    const shoppingSec = document.getElementById('sectionShopping');
+    const pantrySec = document.getElementById('sectionPantry');
+    const hubSec = document.getElementById('sectionHub');
+
+    if (!shoppingSec || !pantrySec || !hubSec) return;
+
+    if (window.innerWidth < 768) {
+        if (!currentMobileTab) {
+            switchMobileTab('shopping');
+        } else {
+            switchMobileTab(currentMobileTab);
+        }
+    } else {
+        shoppingSec.classList.remove('hidden');
+        pantrySec.classList.remove('hidden');
+        hubSec.classList.remove('hidden');
+    }
+}
+
+window.addEventListener('resize', handleResponsiveLayout);
 
 // --- STANDARD ACTIONS ---
 async function toggleBought(id, status) {

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>HomeStock — House 33</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -13,45 +13,35 @@
     <!-- Custom Stylesheet -->
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="tulip-bg text-slate-100 antialiased min-h-screen pb-16 selection:bg-blue-600 selection:text-white">
+<body class="tulip-bg text-slate-100 antialiased min-h-screen pb-24 md:pb-16 selection:bg-blue-600 selection:text-white">
 
     <!-- Top Sticky Header -->
-    <header class="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80">
-        <div class="max-w-[96%] xl:max-w-[92%] mx-auto px-6 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-4">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                        <i class="ph ph-house-line text-white text-xl"></i>
-                    </div>
-                    <div>
-                        <h1 class="font-bold text-base tracking-tight leading-none text-white">HomeStock Dashboard</h1>
-                        <span id="syncStatus" class="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5 mt-0.5"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Live Realtime Connected</span>
-                    </div>
+    <header class="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/80">
+        <div class="max-w-[96%] xl:max-w-[92%] mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                    <i class="ph ph-house-line text-white text-base sm:text-xl"></i>
                 </div>
-
-                <!-- Time-dependent Greeting Pill -->
-                <div id="timeGreetingContainer" class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs font-medium text-slate-300">
-                    <i id="timeGreetingIcon" class="text-amber-400 text-sm"></i>
-                    <span id="timeGreetingText">Hello</span>
+                <div>
+                    <h1 class="font-bold text-xs sm:text-base tracking-tight leading-none text-white">HomeStock</h1>
+                    <span id="syncStatus" class="text-[10px] sm:text-[11px] text-emerald-400 font-medium flex items-center gap-1.5 mt-0.5"><span class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-400 animate-pulse"></span> Live Connected</span>
                 </div>
             </div>
 
-            <div class="flex items-center gap-3">
-                <!-- Expiry Alert Badge in Header -->
+            <div class="flex items-center gap-2 sm:gap-3">
                 <div id="expiryHeaderBadgeContainer"></div>
-
-                <button onclick="openWhatsNew()" class="px-3.5 py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
-                    <i class="ph ph-sparkles text-amber-400 text-base"></i> What's New
+                <button onclick="openWhatsNew()" class="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
+                    <i class="ph ph-sparkles text-amber-400 text-sm sm:text-base"></i> <span class="hidden sm:inline">What's New</span>
                 </button>
             </div>
         </div>
     </header>
 
-    <!-- Expanded Landscape Multi-Column Grid Layout Container -->
-    <main class="max-w-[96%] xl:max-w-[92%] mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+    <!-- Main Stacked Grid Container -->
+    <main class="max-w-[96%] xl:max-w-[92%] mx-auto p-3 sm:p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
         
         <!-- COLUMN 1: SHOPPING LIST & CHECKOUT -->
-        <div class="space-y-6 md:col-span-1">
+        <div id="sectionShopping" class="space-y-6">
             <div class="flex items-center justify-between px-1">
                 <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                     <i class="ph ph-shopping-cart text-blue-400 text-base"></i> Shopping List
@@ -61,13 +51,13 @@
                 </button>
             </div>
 
-            <section class="glass-panel rounded-2xl p-5 space-y-4">
+            <section class="glass-panel rounded-2xl p-4 sm:p-5 space-y-4">
                 <div class="flex justify-between items-start">
                     <div>
-                        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Spent (This Month)</span>
-                        <h3 id="monthlyTotalDisplay" class="text-3xl font-extrabold text-white mt-1 tracking-tight">€0.00</h3>
+                        <span class="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Spent (This Month)</span>
+                        <h3 id="monthlyTotalDisplay" class="text-2xl sm:text-3xl font-extrabold text-white mt-1 tracking-tight">€0.00</h3>
                     </div>
-                    <button onclick="completeCheckout()" id="checkoutBtn" disabled class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition flex items-center gap-2">
+                    <button onclick="completeCheckout()" id="checkoutBtn" disabled class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl shadow-lg transition flex items-center gap-1.5 sm:gap-2">
                         <i class="ph ph-check-circle text-base"></i> Checkout
                     </button>
                 </div>
@@ -83,7 +73,7 @@
 
             <section class="space-y-3">
                 <h3 id="toBuyHeader" class="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">To Buy (0)</h3>
-                <div id="toBuyList" class="space-y-2.5 max-h-[70vh] overflow-y-auto pr-1.5"></div>
+                <div id="toBuyList" class="space-y-2.5 max-h-[60vh] md:max-h-[70vh] overflow-y-auto pr-1.5"></div>
             </section>
 
             <section id="boughtSection" class="space-y-3 hidden">
@@ -93,7 +83,7 @@
         </div>
 
         <!-- COLUMN 2: PANTRY / INVENTORY STOCK -->
-        <div class="space-y-6 md:col-span-1">
+        <div id="sectionPantry" class="space-y-6 md:block">
             <div class="flex items-center justify-between px-1">
                 <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                     <i class="ph ph-archive-box text-indigo-400 text-base"></i> Pantry Inventory
@@ -109,11 +99,11 @@
                 <div id="tagFilterContainer" class="flex flex-wrap gap-1.5 items-center"></div>
             </div>
 
-            <div id="pantryCategoriesContainer" class="space-y-4 max-h-[65vh] overflow-y-auto pr-1.5"></div>
+            <div id="pantryCategoriesContainer" class="space-y-4 max-h-[60vh] md:max-h-[65vh] overflow-y-auto pr-1.5"></div>
         </div>
 
-        <!-- COLUMN 3: SMART HOME HUB (Expiry Radar, Frequent Buys, Quick Notes) -->
-        <div class="space-y-6 md:col-span-1">
+        <!-- COLUMN 3: SMART HOME HUB -->
+        <div id="sectionHub" class="space-y-6">
             <div class="flex items-center justify-between px-1">
                 <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                     <i class="ph ph-squares-four text-amber-400 text-base"></i> Smart Home Hub
@@ -122,39 +112,55 @@
 
             <!-- Hub Tab Buttons -->
             <div class="flex glass-panel p-1 rounded-xl gap-1">
-                <button onclick="switchHubTab('expiry')" id="tabBtnExpiry" class="flex-1 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white transition flex items-center justify-center gap-1.5">
-                    <i class="ph ph-warning"></i> Expiry Radar
+                <button onclick="switchHubTab('expiry')" id="tabBtnExpiry" class="flex-1 py-2 text-[11px] sm:text-xs font-semibold rounded-lg bg-indigo-600 text-white transition flex items-center justify-center gap-1">
+                    <i class="ph ph-warning"></i> Expiry
                 </button>
-                <button onclick="switchHubTab('frequent')" id="tabBtnFrequent" class="flex-1 py-2 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5">
-                    <i class="ph ph-lightning"></i> Frequent Buys
+                <button onclick="switchHubTab('frequent')" id="tabBtnFrequent" class="flex-1 py-2 text-[11px] sm:text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-1">
+                    <i class="ph ph-lightning"></i> Frequent
                 </button>
-                <button onclick="switchHubTab('notes')" id="tabBtnNotes" class="flex-1 py-2 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5">
-                    <i class="ph ph-notepad"></i> Quick Notes
+                <button onclick="switchHubTab('notes')" id="tabBtnNotes" class="flex-1 py-2 text-[11px] sm:text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-1">
+                    <i class="ph ph-notepad"></i> Notes
                 </button>
             </div>
 
             <!-- Tab Content 1: Expiry Radar -->
-            <div id="hubTabExpiry" class="space-y-3 max-h-[70vh] overflow-y-auto pr-1.5"></div>
+            <div id="hubTabExpiry" class="space-y-3 max-h-[60vh] md:max-h-[70vh] overflow-y-auto pr-1.5"></div>
 
             <!-- Tab Content 2: Frequent Buys -->
-            <div id="hubTabFrequent" class="space-y-3 max-h-[70vh] overflow-y-auto pr-1.5 hidden"></div>
+            <div id="hubTabFrequent" class="space-y-3 max-h-[60vh] md:max-h-[70vh] overflow-y-auto pr-1.5 hidden"></div>
 
             <!-- Tab Content 3: Quick Notes -->
-            <div id="hubTabNotes" class="space-y-3 max-h-[70vh] overflow-y-auto pr-1.5 hidden">
+            <div id="hubTabNotes" class="space-y-3 max-h-[60vh] md:max-h-[70vh] overflow-y-auto pr-1.5 hidden">
                 <div class="glass-panel rounded-2xl p-4 space-y-3">
                     <div class="flex justify-between items-center">
                         <span class="text-xs font-bold text-slate-300">Shared Household Scratchpad</span>
                         <span id="notesSavedStatus" class="text-[10px] text-emerald-400 font-medium">Saved</span>
                     </div>
-                    <textarea id="householdNotesInput" oninput="saveHouseholdNotes()" rows="12" placeholder="Jot down dinner plans, reminders, or delivery codes here..." class="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs focus:outline-none focus:border-indigo-500 transition text-slate-200 placeholder:text-slate-500 resize-none"></textarea>
+                    <textarea id="householdNotesInput" oninput="saveHouseholdNotes()" rows="10" placeholder="Jot down dinner plans, reminders, or delivery codes here..." class="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs focus:outline-none focus:border-indigo-500 transition text-slate-200 placeholder:text-slate-500 resize-none"></textarea>
                 </div>
             </div>
         </div>
     </main>
 
+    <!-- Mobile Bottom Navigation Bar -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800 px-4 py-2 flex justify-around items-center">
+        <button onclick="switchMobileTab('shopping')" id="navBtnShopping" class="flex flex-col items-center gap-1 text-blue-400 transition py-1 px-3">
+            <i class="ph ph-shopping-cart text-lg"></i>
+            <span class="text-[10px] font-semibold">Shopping</span>
+        </button>
+        <button onclick="switchMobileTab('pantry')" id="navBtnPantry" class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition py-1 px-3">
+            <i class="ph ph-archive-box text-lg"></i>
+            <span class="text-[10px] font-semibold">Pantry</span>
+        </button>
+        <button onclick="switchMobileTab('hub')" id="navBtnHub" class="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition py-1 px-3">
+            <i class="ph ph-squares-four text-lg"></i>
+            <span class="text-[10px] font-semibold">Smart Hub</span>
+        </button>
+    </nav>
+
     <!-- Floating Subtotal Pill Bar -->
-    <div id="runningTotalPill" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-xl border border-slate-700 shadow-2xl rounded-full px-6 py-3 flex items-center gap-4 text-sm hidden transition-all">
-        <div class="flex items-center gap-2.5">
+    <div id="runningTotalPill" class="fixed bottom-16 md:bottom-6 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-xl border border-slate-700 shadow-2xl rounded-full px-5 py-2.5 sm:px-6 sm:py-3 flex items-center gap-3 text-xs sm:text-sm hidden transition-all">
+        <div class="flex items-center gap-2">
             <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
             <span class="text-slate-300 font-medium">In-Cart Subtotal:</span>
         </div>
@@ -283,16 +289,16 @@
             <div class="flex justify-between items-center">
                 <div class="flex items-center gap-2">
                     <i class="ph ph-sparkles text-amber-400 text-xl"></i>
-                    <h3 class="text-base font-bold">Smart Home Hub Upgrades</h3>
+                    <h3 class="text-base font-bold">Mobile Responsive Upgrades</h3>
                 </div>
                 <button onclick="closeWhatsNew()" class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"><i class="ph ph-x"></i></button>
             </div>
             <div class="space-y-3.5 text-xs text-slate-300">
                 <div class="flex items-start gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
-                    <i class="ph ph-squares-four text-amber-400 text-lg shrink-0 mt-0.5"></i>
+                    <i class="ph ph-device-mobile text-blue-400 text-lg shrink-0 mt-0.5"></i>
                     <div>
-                        <strong class="text-white block mb-0.5">New Smart Home Hub</strong>
-                        Replaced the old recipe box with an Expiry Radar to prevent waste, Frequent Buys for one-tap reordering, and a Shared Household Scratchpad.
+                        <strong class="text-white block mb-0.5">Portrait Mode Optimized</strong>
+                        Added a clean bottom navigation bar to easily toggle between Shopping, Pantry, and Smart Hub on phones.
                     </div>
                 </div>
             </div>
