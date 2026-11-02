@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HomeStock — House 33</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Supabase JS Client UMD -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Custom Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="tulip-bg text-slate-100 antialiased min-h-screen pb-16 selection:bg-blue-600 selection:text-white">
+
+    <!-- Top Sticky Header -->
+    <header class="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80">
+        <div class="max-w-[96%] xl:max-w-[92%] mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                        <i class="ph ph-house-line text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-base tracking-tight leading-none text-white">HomeStock Dashboard</h1>
+                        <span id="syncStatus" class="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5 mt-0.5"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Live Realtime Connected</span>
+                    </div>
+                </div>
+
+                <!-- Time-dependent Greeting Pill -->
+                <div id="timeGreetingContainer" class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs font-medium text-slate-300">
+                    <i id="timeGreetingIcon" class="text-amber-400 text-sm"></i>
+                    <span id="timeGreetingText">Hello</span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <!-- Expiry Alert Badge in Header -->
+                <div id="expiryHeaderBadgeContainer"></div>
+
+                <button onclick="openWhatsNew()" class="px-3.5 py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
+                    <i class="ph ph-sparkles text-amber-400 text-base"></i> What's New
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Expanded Landscape Multi-Column Grid Layout Container -->
+    <main class="max-w-[96%] xl:max-w-[92%] mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+        
+        <!-- COLUMN 1: SHOPPING LIST & CHECKOUT -->
+        <div class="space-y-6 md:col-span-1">
+            <div class="flex items-center justify-between px-1">
+                <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <i class="ph ph-shopping-cart text-blue-400 text-base"></i> Shopping List
+                </h2>
+                <button onclick="openAddModal()" class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs px-3 py-1.5 rounded-xl shadow-md shadow-blue-600/25 transition">
+                    <i class="ph ph-plus text-sm"></i> Add to List
+                </button>
+            </div>
+
+            <section class="glass-panel rounded-2xl p-5 space-y-4">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Spent (This Month)</span>
+                        <h3 id="monthlyTotalDisplay" class="text-3xl font-extrabold text-white mt-1 tracking-tight">€0.00</h3>
+                    </div>
+                    <button onclick="completeCheckout()" id="checkoutBtn" disabled class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg transition flex items-center gap-2">
+                        <i class="ph ph-check-circle text-base"></i> Checkout
+                    </button>
+                </div>
+                <div class="h-px bg-slate-800/80 w-full"></div>
+                <div>
+                    <button onclick="toggleTripHistory()" class="w-full flex items-center justify-between text-xs font-semibold text-blue-400 hover:text-blue-300 transition py-1">
+                        <span id="tripHistoryToggleText">View Trip History (0 visits)</span>
+                        <i id="tripHistoryChevron" class="ph ph-caret-down text-sm transition-transform duration-200"></i>
+                    </button>
+                    <div id="tripHistoryContainer" class="hidden mt-3 space-y-2.5 max-h-48 overflow-y-auto pr-1"></div>
+                </div>
+            </section>
+
+            <section class="space-y-3">
+                <h3 id="toBuyHeader" class="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">To Buy (0)</h3>
+                <div id="toBuyList" class="space-y-2.5 max-h-[70vh] overflow-y-auto pr-1.5"></div>
+            </section>
+
+            <section id="boughtSection" class="space-y-3 hidden">
+                <h3 id="boughtHeader" class="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">In Cart / Bought (0)</h3>
+                <div id="boughtList" class="space-y-2.5 max-h-60 overflow-y-auto pr-1.5"></div>
+            </section>
+        </div>
+
+        <!-- COLUMN 2: PANTRY / INVENTORY STOCK -->
+        <div class="space-y-6 md:col-span-1">
+            <div class="flex items-center justify-between px-1">
+                <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <i class="ph ph-archive-box text-indigo-400 text-base"></i> Pantry Inventory
+                </h2>
+                <span id="pantryCount" class="text-xs glass-panel px-2.5 py-1 rounded-lg text-slate-200 font-medium">0 items</span>
+            </div>
+            
+            <div class="space-y-2.5">
+                <div class="relative">
+                    <i class="ph ph-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                    <input type="text" id="pantrySearchInput" oninput="renderPantry()" placeholder="Search pantry items..." class="w-full glass-panel rounded-xl pl-10 pr-4 py-2.5 text-xs focus:outline-none focus:border-indigo-500 transition text-slate-200 placeholder:text-slate-400">
+                </div>
+                <div id="tagFilterContainer" class="flex flex-wrap gap-1.5 items-center"></div>
+            </div>
+
+            <div id="pantryCategoriesContainer" class="space-y-4 max-h-[65vh] overflow-y-auto pr-1.5"></div>
+        </div>
+
+        <!-- COLUMN 3: SMART HOME HUB (Expiry Radar, Frequent Buys, Quick Notes) -->
+        <div class="space-y-6 md:col-span-1">
+            <div class="flex items-center justify-between px-1">
+                <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <i class="ph ph-squares-four text-amber-400 text-base"></i> Smart Home Hub
+                </h2>
+            </div>
+
+            <!-- Hub Tab Buttons -->
+            <div class="flex glass-panel p-1 rounded-xl gap-1">
+                <button onclick="switchHubTab('expiry')" id="tabBtnExpiry" class="flex-1 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white transition flex items-center justify-center gap-1.5">
+                    <i class="ph ph-warning"></i> Expiry Radar
+                </button>
+                <button onclick="switchHubTab('frequent')" id="tabBtnFrequent" class="flex-1 py-2 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5">
+                    <i class="ph ph-lightning"></i> Frequent Buys
+                </button>
+                <button onclick="switchHubTab('notes')" id="tabBtnNotes" class="flex-1 py-2 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5">
+                    <i class="ph ph-notepad"></i> Quick Notes
+                </button>
+            </div>
+
+            <!-- Tab Content 1: Expiry Radar -->
+            <div id="hubTabExpiry" class="space-y-3 max-h-[70vh] overflow-y-auto pr-1.5"></div>
+
+            <!-- Tab Content 2: Frequent Buys -->
+            <div id="hubTabFrequent" class="space-y-3 max-h-[70vh] overflow-y-auto pr-1.5 hidden"></div>
+
+            <!-- Tab Content 3: Quick Notes -->
+            <div id="hubTabNotes" class="space-y-3 max-h-[70vh] overflow-y-auto pr-1.5 hidden">
+                <div class="glass-panel rounded-2xl p-4 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-slate-300">Shared Household Scratchpad</span>
+                        <span id="notesSavedStatus" class="text-[10px] text-emerald-400 font-medium">Saved</span>
+                    </div>
+                    <textarea id="householdNotesInput" oninput="saveHouseholdNotes()" rows="12" placeholder="Jot down dinner plans, reminders, or delivery codes here..." class="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs focus:outline-none focus:border-indigo-500 transition text-slate-200 placeholder:text-slate-500 resize-none"></textarea>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Floating Subtotal Pill Bar -->
+    <div id="runningTotalPill" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 bg-slate-900/95 backdrop-blur-xl border border-slate-700 shadow-2xl rounded-full px-6 py-3 flex items-center gap-4 text-sm hidden transition-all">
+        <div class="flex items-center gap-2.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span class="text-slate-300 font-medium">In-Cart Subtotal:</span>
+        </div>
+        <span id="cartSubtotalValue" class="font-bold text-emerald-400 font-mono text-base">€0.00</span>
+    </div>
+
+    <!-- Modals -->
+    <!-- Add Item Modal -->
+    <div id="addItemModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-md rounded-2xl p-6 space-y-5 shadow-2xl">
+            <div class="flex justify-between items-center">
+                <h3 class="text-lg font-bold">Add Item to Shopping List</h3>
+                <button onclick="closeAddModal()" class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5">Item Name</label>
+                    <input type="text" id="inputName" placeholder="e.g. Greek Yogurt" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-200">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5">Quantity</label>
+                        <input type="number" id="inputQty" value="1" min="1" max="99" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-200">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5">Price (€ optional)</label>
+                        <input type="number" step="0.01" id="inputPrice" placeholder="0.00" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-200">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5">Category</label>
+                    <select id="inputCategory" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-200">
+                        <option value="Pantry">Pantry</option>
+                        <option value="Fridge">Fridge</option>
+                        <option value="Freezer">Freezer</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5">Expiry Date (optional)</label>
+                    <input type="date" id="inputExpiry" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-300">
+                </div>
+            </div>
+            <div class="flex gap-3 pt-3">
+                <button onclick="closeAddModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-sm font-semibold py-3 rounded-xl transition">Cancel</button>
+                <button onclick="saveNewItem()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-sm font-semibold py-3 shadow-lg shadow-blue-600/25 transition">Save Item</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Item Modal -->
+    <div id="editItemModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-md rounded-2xl p-6 space-y-5 shadow-2xl">
+            <div class="flex justify-between items-center">
+                <h3 class="text-lg font-bold">Edit Item</h3>
+                <button onclick="closeEditModal()" class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"><i class="ph ph-x"></i></button>
+            </div>
+            <input type="hidden" id="editId">
+            <input type="hidden" id="editSource">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5">Item Name</label>
+                    <input type="text" id="editName" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-200">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5">Quantity</label>
+                        <input type="number" id="editQty" min="1" max="99" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-200">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1.5">Price (€)</label>
+                        <input type="number" step="0.01" id="editPrice" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-200">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5">Category</label>
+                    <select id="editCategory" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-200">
+                        <option value="Pantry">Pantry</option>
+                        <option value="Fridge">Fridge</option>
+                        <option value="Freezer">Freezer</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5">Expiry Date</label>
+                    <input type="date" id="editExpiry" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-300">
+                </div>
+            </div>
+            <div class="flex gap-3 pt-3">
+                <button onclick="closeEditModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-sm font-semibold py-3 rounded-xl transition">Cancel</button>
+                <button onclick="saveEditedItem()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-sm font-semibold py-3 shadow-lg shadow-blue-600/25 transition">Update Item</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div id="receiptModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white text-slate-900 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl relative receipt-font text-xs">
+            <button onclick="closeReceiptModal()" class="absolute top-4 right-4 w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-black transition"><i class="ph ph-x"></i></button>
+            <div class="text-center space-y-1 pt-3">
+                <div class="w-10 h-10 bg-slate-950 text-white rounded-xl mx-auto flex items-center justify-center mb-2">
+                    <i class="ph ph-shopping-bag text-lg"></i>
+                </div>
+                <h4 class="font-bold text-sm tracking-wide">HomeStock Market</h4>
+                <p id="receiptDate" class="text-[10px] text-slate-500"></p>
+            </div>
+            <div class="border-b border-dashed border-slate-300 my-2"></div>
+            <div class="flex justify-between font-bold text-[10px] text-slate-400 pb-1">
+                <span>ITEM / DETAILS</span>
+                <span>AMOUNT</span>
+            </div>
+            <div id="receiptItemsList" class="space-y-2.5 max-h-48 overflow-y-auto pr-1"></div>
+            <div class="border-b border-dashed border-slate-300 my-2"></div>
+            <div class="space-y-1.5 pt-1">
+                <div class="flex justify-between font-bold text-sm">
+                    <span>TOTAL PAID</span>
+                    <span id="receiptTotal">€0.00</span>
+                </div>
+                <p class="text-center text-[9px] text-slate-400 pt-4 font-sans">Thank you for shopping with HomeStock!</p>
+            </div>
+            <button onclick="closeReceiptModal()" class="w-full bg-slate-950 hover:bg-slate-800 text-white font-sans text-xs font-bold py-3 rounded-xl shadow-md transition mt-3">Done</button>
+        </div>
+    </div>
+
+    <!-- What's New Modal -->
+    <div id="whatsNewModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-sm rounded-3xl p-6 space-y-5 shadow-2xl">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <i class="ph ph-sparkles text-amber-400 text-xl"></i>
+                    <h3 class="text-base font-bold">Smart Home Hub Upgrades</h3>
+                </div>
+                <button onclick="closeWhatsNew()" class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="space-y-3.5 text-xs text-slate-300">
+                <div class="flex items-start gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
+                    <i class="ph ph-squares-four text-amber-400 text-lg shrink-0 mt-0.5"></i>
+                    <div>
+                        <strong class="text-white block mb-0.5">New Smart Home Hub</strong>
+                        Replaced the old recipe box with an Expiry Radar to prevent waste, Frequent Buys for one-tap reordering, and a Shared Household Scratchpad.
+                    </div>
+                </div>
+            </div>
+            <button onclick="closeWhatsNew()" class="w-full bg-blue-600 hover:bg-blue-500 text-sm font-semibold py-3 rounded-xl shadow-lg shadow-blue-600/25 transition">Awesome</button>
+        </div>
+    </div>
+
+    <!-- App JavaScript Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
