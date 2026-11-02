@@ -670,6 +670,8 @@ async function decrementPantryItem(id, currentQty, name, category, price, expiry
         await supabaseClient.from('items').update({ quantity: currentQty - 1 }).eq('id', id);
     } else {
         await supabaseClient.from('items').delete().eq('id', id);
+        
+        // When pantry item reaches 0, send it to the "To Buy" list (is_bought: false)
         await supabaseClient.from('shopping_list').insert({
             household_id: DEFAULT_HOUSEHOLD_ID,
             name: name,
@@ -677,7 +679,7 @@ async function decrementPantryItem(id, currentQty, name, category, price, expiry
             category: category || 'Pantry',
             price: price !== null && price !== undefined && price !== 'null' ? parseFloat(price) : null,
             expiry_date: expiry_date || null,
-            is_bought: true
+            is_bought: false
         });
     }
 }
@@ -723,7 +725,7 @@ async function completeCheckout() {
 
 async function deleteTripPrompt(tripId) {
     const trip = pastTrips.find(t => t.id === tripId);
-    if (!trip || !confirm("Restore items back to active In-Cart list?")) {
+    if (!trip || !confirm("Restore items back to active To-Buy list?")) {
         if (trip) await supabaseClient.from('shopping_trips').delete().eq('id', tripId);
         return;
     }
@@ -735,7 +737,7 @@ async function deleteTripPrompt(tripId) {
             name: name, 
             quantity: 1, 
             category: 'Pantry', 
-            is_bought: true 
+            is_bought: false 
         });
     }
     await supabaseClient.from('shopping_trips').delete().eq('id', tripId);
@@ -775,7 +777,7 @@ async function saveNewItem() {
         return;
     }
 
-    // Setting is_bought to true places it directly in the In-Cart / Bought section
+    // Manual/Scanned items saved from modal go straight to In-Cart / Bought section
     await supabaseClient.from('shopping_list').insert({ 
         household_id: DEFAULT_HOUSEHOLD_ID, 
         name, 
