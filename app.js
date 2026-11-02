@@ -11,6 +11,7 @@ let expiryAlertFilterActive = false;
 let collapsedCategories = {};
 let currentHubTab = 'expiry';
 let currentMobileTab = null;
+let html5QrCodeScanner = null;
 
 function parseTags(rawTags) {
     if (!rawTags) return [];
@@ -505,6 +506,96 @@ function saveHouseholdNotes() {
     }, 1500);
 }
 
+// --- BARCODE SCANNER & OPEN FOOD FACTS API ---
+function toggleBarcodeScanner() {
+    const scannerContainer = document.getElementById('barcodeScannerContainer');
+    const isHidden = scannerContainer.classList.contains('hidden');
+
+    if (isHidden) {
+        scannerContainer.classList.remove('hidden');
+        startBarcodeScanner();
+    } else {
+        stopBarcodeScanner();
+    }
+}
+
+function startBarcodeScanner() {
+    if (html5QrCodeScanner) return;
+
+    html5QrCodeScanner = new Html5Qrcode("reader");
+    const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+
+    html5QrCodeScanner.start(
+        { facingMode: "environment" }, 
+        config, 
+        async (decodedText) => {
+            stopBarcodeScanner();
+            await lookupProductByBarcode(decodedText);
+        },
+        (errorMessage) => {
+            // Scanning frame error (safe to ignore)
+        }
+    ).catch(err => {
+        console.error("Camera start error:", err);
+        alert("Unable to access camera. Please check permissions.");
+        stopBarcodeScanner();
+    });
+}
+
+function stopBarcodeScanner() {
+    if (html5QrCodeScanner) {
+        html5QrCodeScanner.stop().then(() => {
+            html5QrCodeScanner.clear();
+            html5QrCodeScanner = null;
+        }).catch(err => console.error("Failed to stop scanner:", err));
+    }
+    const scannerContainer = document.getElementById('barcodeScannerContainer');
+    if (scannerContainer) {
+        scannerContainer.classList.add('hidden');
+    }
+}
+
+async function lookupProductByBarcode(barcode) {
+    const nameInput = document.getElementById('inputName');
+    const categorySelect = document.getElementById('inputCategory');
+    
+    nameInput.value = "Fetching product details...";
+    
+    try {
+        const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`, {
+            headers: {
+                "User-Agent": "HomeStockDashboard/1.0 (GitHub Pages Web App)"
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 1 && data.product) {
+            const product = data.product;
+            const productName = product.product_name || product.generic_name || "Unknown Product";
+            const categories = (product.categories || "").toLowerCase();
+            
+            nameInput.value = productName;
+            
+            if (categories.includes('fridge') || categories.includes('dairy') || categories.includes('cheese') || categories.includes('milk')) {
+                categorySelect.value = 'Fridge';
+            } else if (categories.includes('frozen') || categories.includes('ice cream')) {
+                categorySelect.value = 'Freezer';
+            } else {
+                categorySelect.value = 'Pantry';
+            }
+            
+        } else {
+            nameInput.value = "";
+            alert(`Product with barcode ${barcode} not found in database. Please enter name manually.`);
+        }
+    } catch (err) {
+        console.error("API lookup error:", err);
+        nameInput.value = "";
+        alert("Failed to connect to product database.");
+    }
+}
+
 // --- MOBILE TAB SWITCHER ---
 function switchMobileTab(tab) {
     const shoppingSec = document.getElementById('sectionShopping');
@@ -657,6 +748,7 @@ function toggleTripHistory() {
 }
 
 function openAddModal() {
+    stopBarcodeScanner();
     document.getElementById('inputName').value = '';
     document.getElementById('inputQty').value = '1';
     document.getElementById('inputPrice').value = '';
@@ -664,9 +756,14 @@ function openAddModal() {
     document.getElementById('inputExpiry').value = '';
     document.getElementById('addItemModal').classList.remove('hidden');
 }
-function closeAddModal() { document.getElementById('addItemModal').classList.add('hidden'); }
+
+function closeAddModal() { 
+    stopBarcodeScanner();
+    document.getElementById('addItemModal').classList.add('hidden'); 
+}
 
 async function saveNewItem() {
+    stopBarcodeScanner();
     const name = document.getElementById('inputName').value.trim();
     const qty = parseInt(document.getElementById('inputQty').value) || 1;
     const price = parseFloat(document.getElementById('inputPrice').value) || null;

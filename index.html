@@ -10,6 +10,8 @@
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <!-- Supabase JS Client UMD -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- HTML5 QR Code Scanner Library -->
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <!-- Custom Stylesheet -->
     <link rel="stylesheet" href="style.css">
 </head>
@@ -175,11 +177,26 @@
                 <h3 class="text-lg font-bold">Add Item to Shopping List</h3>
                 <button onclick="closeAddModal()" class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"><i class="ph ph-x"></i></button>
             </div>
+            
             <div class="space-y-4">
                 <div>
-                    <label class="block text-xs font-medium text-slate-400 mb-1.5">Item Name</label>
+                    <div class="flex justify-between items-center mb-1.5">
+                        <label class="block text-xs font-medium text-slate-400">Item Name</label>
+                        <button type="button" onclick="toggleBarcodeScanner()" class="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1">
+                            <i class="ph ph-barcode text-base"></i> Scan Barcode
+                        </button>
+                    </div>
                     <input type="text" id="inputName" placeholder="e.g. Greek Yogurt" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-200">
                 </div>
+
+                <!-- Camera Barcode Scanner Viewport Container -->
+                <div id="barcodeScannerContainer" class="hidden space-y-2 pt-1">
+                    <div id="reader" class="overflow-hidden rounded-xl border border-slate-800 bg-slate-950"></div>
+                    <button type="button" onclick="stopBarcodeScanner()" class="w-full bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white text-xs font-semibold py-2 rounded-xl transition">
+                        Close Camera
+                    </button>
+                </div>
+
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-medium text-slate-400 mb-1.5">Quantity</label>
@@ -203,6 +220,7 @@
                     <input type="date" id="inputExpiry" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition text-slate-300">
                 </div>
             </div>
+            
             <div class="flex gap-3 pt-3">
                 <button onclick="closeAddModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-sm font-semibold py-3 rounded-xl transition">Cancel</button>
                 <button onclick="saveNewItem()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-sm font-semibold py-3 shadow-lg shadow-blue-600/25 transition">Save Item</button>
@@ -289,16 +307,16 @@
             <div class="flex justify-between items-center">
                 <div class="flex items-center gap-2">
                     <i class="ph ph-sparkles text-amber-400 text-xl"></i>
-                    <h3 class="text-base font-bold">Mobile Responsive Upgrades</h3>
+                    <h3 class="text-base font-bold">Barcode Scanner Integration</h3>
                 </div>
                 <button onclick="closeWhatsNew()" class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition"><i class="ph ph-x"></i></button>
             </div>
             <div class="space-y-3.5 text-xs text-slate-300">
                 <div class="flex items-start gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
-                    <i class="ph ph-device-mobile text-blue-400 text-lg shrink-0 mt-0.5"></i>
+                    <i class="ph ph-barcode text-blue-400 text-lg shrink-0 mt-0.5"></i>
                     <div>
-                        <strong class="text-white block mb-0.5">Portrait Mode Optimized</strong>
-                        Added a clean bottom navigation bar to easily toggle between Shopping, Pantry, and Smart Hub on phones.
+                        <strong class="text-white block mb-0.5">Scan & Auto-Fill</strong>
+                        Tap "Scan Barcode" in the Add Item modal to look up product names and categories automatically via Open Food Facts.
                     </div>
                 </div>
             </div>
