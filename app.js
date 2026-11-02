@@ -476,9 +476,9 @@ function renderFrequentBuys() {
                 name: name,
                 quantity: 1,
                 category: 'Pantry',
-                is_bought: false
+                is_bought: true
             });
-            alert(`Added "${name}" to your shopping list!`);
+            alert(`Added "${name}" to your In-Cart list!`);
         };
 
         container.appendChild(div);
@@ -677,7 +677,7 @@ async function decrementPantryItem(id, currentQty, name, category, price, expiry
             category: category || 'Pantry',
             price: price !== null && price !== undefined && price !== 'null' ? parseFloat(price) : null,
             expiry_date: expiry_date || null,
-            is_bought: false
+            is_bought: true
         });
     }
 }
@@ -723,7 +723,7 @@ async function completeCheckout() {
 
 async function deleteTripPrompt(tripId) {
     const trip = pastTrips.find(t => t.id === tripId);
-    if (!trip || !confirm("Restore items back to active shopping list?")) {
+    if (!trip || !confirm("Restore items back to active In-Cart list?")) {
         if (trip) await supabaseClient.from('shopping_trips').delete().eq('id', tripId);
         return;
     }
@@ -735,7 +735,7 @@ async function deleteTripPrompt(tripId) {
             name: name, 
             quantity: 1, 
             category: 'Pantry', 
-            is_bought: false 
+            is_bought: true 
         });
     }
     await supabaseClient.from('shopping_trips').delete().eq('id', tripId);
@@ -775,6 +775,7 @@ async function saveNewItem() {
         return;
     }
 
+    // Setting is_bought to true places it directly in the In-Cart / Bought section
     await supabaseClient.from('shopping_list').insert({ 
         household_id: DEFAULT_HOUSEHOLD_ID, 
         name, 
@@ -782,7 +783,7 @@ async function saveNewItem() {
         category, 
         price, 
         expiry_date,
-        is_bought: false 
+        is_bought: true 
     });
     
     closeAddModal();
