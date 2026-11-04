@@ -13,6 +13,11 @@ let collapsedCategories = {};
 let currentHubTab = 'expiry';
 let currentMobileTab = null;
 let html5QrCodeScanner = null;
+let householdNotesSaveTimeout = null;
+let householdNotesLoadRequest = 0;
+let householdNotesInitialized = false;
+let householdNotesDirty = false;
+let householdNotesRevision = 0;
 
 // --- AUTHENTICATION & INITIALIZATION ---
 async function checkUserAuth() {
@@ -87,6 +92,7 @@ async function fetchUserHouseholdId(userId) {
         setMainHeaderAuthControls(true);
         await fetchAllData();
         await setupRealtimeSubscriptions();
+        await loadHouseholdNotes();
         return true;
     } catch (err) {
         console.error("Unexpected error while resolving the user's household:", err);
@@ -336,6 +342,12 @@ async function setupRealtimeSubscriptions() {
             table: 'shopping_trips',
             filter: `household_id=eq.${currentHouseholdId}`
         }, () => fetchAllData())
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'household_notes',
+            filter: `household_id=eq.${currentHouseholdId}`
+        }, () => loadHouseholdNotes(true))
         .subscribe((status, err) => {
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
                 console.error(`Realtime subscription ${status.toLowerCase()}:`, err || realtimeChannel?.topic);
@@ -656,7 +668,6 @@ function switchHubTab(tabName) {
 function renderSmartHub() {
     renderExpiryRadar();
     renderFrequentBuys();
-    loadHouseholdNotes();
 }
 
 function renderExpiryRadar() {
@@ -785,13 +796,40 @@ function renderFrequentBuys() {
     });
 }
 
-function loadHouseholdNotes() {
+async function loadHouseholdNotes(isRealtimeUpdate = false) {
     const notesInput = document.getElementById('householdNotesInput');
     if (!notesInput) return;
-    const saved = localStorage.getItem('homestock_household_notes') || '';
-    if (notesInput.value !== saved) {
-        notesInput.value = saved;
+
+    if (!currentHouseholdId) {
+        console.error("Cannot load household notes: currentHouseholdId has not been resolved.");
+        return;
     }
+
+    const requestId = ++householdNotesLoadRequest;
+    if (!isRealtimeUpdate) {
+        notesInput.disabled = true;
+        document.getElementById('notesSavedStatus').innerText = "Loading...";
+    }
+
+    const { data, error } = await supabaseClient
+        .from('household_notes')
+        .select('notes')
+        .eq('household_id', currentHouseholdId)
+        .maybeSingle();
+
+    if (requestId !== householdNotesLoadRequest) return;
+    if (error) {
+        console.error("Failed to load household notes:", error);
+        document.getElementById('notesSavedStatus').innerText = "Could not load notes";
+        return;
+    }
+
+    if (isRealtimeUpdate && (householdNotesDirty || householdNotesSaveTimeout)) return;
+
+    notesInput.value = data?.notes || '';
+    notesInput.disabled = false;
+    householdNotesInitialized = true;
+    document.getElementById('notesSavedStatus').innerText = "Saved";
 }
 
 function saveHouseholdNotes() {
@@ -799,11 +837,42 @@ function saveHouseholdNotes() {
     const statusEl = document.getElementById('notesSavedStatus');
     if (!notesInput) return;
 
-    localStorage.setItem('homestock_household_notes', notesInput.value);
-    statusEl.innerText = "Saved";
-    setTimeout(() => {
-        statusEl.innerText = "Synced";
-    }, 1500);
+    if (!householdNotesInitialized || !currentHouseholdId) {
+        console.error("Cannot save household notes before they have loaded.");
+        statusEl.innerText = "Notes are not ready";
+        return;
+    }
+
+    householdNotesDirty = true;
+    householdNotesRevision += 1;
+    statusEl.innerText = "Unsaved changes";
+    clearTimeout(householdNotesSaveTimeout);
+    householdNotesSaveTimeout = setTimeout(async () => {
+        householdNotesSaveTimeout = null;
+        statusEl.innerText = "Saving...";
+        const revision = householdNotesRevision;
+
+        const { error } = await supabaseClient
+            .from('household_notes')
+            .upsert({
+                household_id: currentHouseholdId,
+                notes: notesInput.value,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'household_id' });
+
+        if (error) {
+            console.error("Failed to save household notes:", error);
+            statusEl.innerText = "Save failed";
+            return;
+        }
+
+        if (revision === householdNotesRevision) {
+            householdNotesDirty = false;
+            statusEl.innerText = "Saved";
+        } else {
+            statusEl.innerText = "Unsaved changes";
+        }
+    }, 500);
 }
 
 // --- BARCODE SCANNER & OPEN FOOD FACTS API ---
