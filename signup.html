@@ -51,8 +51,20 @@
                     </div>
                     <div>
                         <label for="authPassword" class="block text-sm font-medium text-slate-300 mb-2">Password</label>
-                        <input id="authPassword" name="password" type="password" autocomplete="new-password" minlength="6" required placeholder="At least 6 characters" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition text-white placeholder:text-slate-500">
-                        <p class="text-xs text-slate-500 mt-2">Use at least 6 characters.</p>
+                        <input id="authPassword" name="password" type="password" autocomplete="new-password" minlength="7" required placeholder="Create a strong password" aria-describedby="passwordRequirements" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition text-white placeholder:text-slate-500">
+                        <ul id="passwordRequirements" class="text-xs text-slate-500 mt-2 space-y-1" aria-live="polite">
+                            <li id="passwordLengthStatus">At least 7 characters</li>
+                            <li id="passwordUppercaseStatus">At least 1 uppercase letter</li>
+                            <li id="passwordLowercaseStatus">At least 1 lowercase letter</li>
+                            <li id="passwordSpecialStatus">At least 1 special character</li>
+                            <li id="passwordCommonStatus">Not a commonly used password</li>
+                            <li id="passwordPatternStatus">Avoid repeated characters and sequences</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <label for="authPasswordConfirm" class="block text-sm font-medium text-slate-300 mb-2">Confirm password</label>
+                        <input id="authPasswordConfirm" name="passwordConfirm" type="password" autocomplete="new-password" required placeholder="Re-enter your password" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition text-white placeholder:text-slate-500">
+                        <p id="passwordMatchStatus" class="text-xs text-slate-500 mt-2" aria-live="polite">Re-enter your password to confirm.</p>
                     </div>
                     <div>
                         <label for="householdInviteCode" class="block text-sm font-medium text-slate-300 mb-2">Household invite code</label>

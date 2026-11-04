@@ -58,13 +58,20 @@ async function handleLogin() {
 async function handleSignUp() {
     const email = document.getElementById('authEmail').value.trim();
     const password = document.getElementById('authPassword').value;
+    const passwordConfirm = document.getElementById('authPasswordConfirm').value;
     const inviteCode = document.getElementById('householdInviteCode').value.trim();
     if (!email || !password || !inviteCode) {
         setAuthStatus("Enter your email, password, and household invite code.", true);
         return;
     }
-    if (password.length < 6) {
-        setAuthStatus("Your password must be at least 6 characters.", true);
+    const passwordRequirements = getPasswordRequirements(password);
+    if (Object.values(passwordRequirements).some(requirement => !requirement)) {
+        setAuthStatus("Your password must meet all the requirements listed below.", true);
+        return;
+    }
+    if (password !== passwordConfirm) {
+        setAuthStatus("Your passwords don't match. Please check both fields.", true);
+        document.getElementById('authPasswordConfirm').focus();
         return;
     }
 
@@ -103,6 +110,99 @@ async function handleSignUp() {
     }
 }
 
+function getPasswordRequirements(password) {
+    const normalizedPassword = password.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    const commonPasswords = new Set([
+        'password', 'password1', 'password123', 'passw0rd', 'qwerty', 'qwerty123',
+        '123456', '1234567', '12345678', '123456789', '111111', '000000',
+        'letmein', 'welcome', 'welcome1', 'admin', 'admin123', 'iloveyou',
+        'monkey', 'dragon', 'sunshine', 'princess', 'football', 'baseball',
+        'trustno1', 'changeme', 'abc123', 'login'
+    ]);
+    const commonPrefixes = [
+        'password', 'passw0rd', 'qwerty', 'letmein', 'welcome', 'admin',
+        'iloveyou', 'monkey', 'dragon', 'sunshine', 'princess', 'football',
+        'baseball', 'trustno1', 'changeme'
+    ];
+    const isCommon = commonPasswords.has(normalizedPassword)
+        || commonPrefixes.some(prefix => normalizedPassword.startsWith(prefix)
+            && /^\d{1,4}$/.test(normalizedPassword.slice(prefix.length)));
+
+    return {
+        length: password.length >= 7,
+        uppercase: /[A-Z]/.test(password),
+        lowercase: /[a-z]/.test(password),
+        special: /[^A-Za-z0-9]/.test(password),
+        common: !isCommon,
+        predictable: !hasPredictablePasswordPattern(normalizedPassword)
+    };
+}
+
+function hasPredictablePasswordPattern(password) {
+    if (/(.)\1{3,}/.test(password)) return true;
+
+    let sequentialLength = 1;
+    for (let index = 1; index < password.length; index += 1) {
+        const difference = password.charCodeAt(index) - password.charCodeAt(index - 1);
+        if (Math.abs(difference) === 1) {
+            sequentialLength = difference === password.charCodeAt(index - 1) - password.charCodeAt(index - 2)
+                ? sequentialLength + 1
+                : 2;
+            if (sequentialLength >= 4) return true;
+        } else {
+            sequentialLength = 1;
+        }
+    }
+
+    const keyboardRows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+    return keyboardRows.some(row => {
+        const reversedRow = [...row].reverse().join('');
+        return [row, reversedRow].some(sequence => {
+            for (let index = 0; index <= sequence.length - 4; index += 1) {
+                if (password.includes(sequence.slice(index, index + 4))) return true;
+            }
+            return false;
+        });
+    });
+}
+
+function updateSignupPasswordFeedback() {
+    const passwordInput = document.getElementById('authPassword');
+    const confirmInput = document.getElementById('authPasswordConfirm');
+    const matchStatus = document.getElementById('passwordMatchStatus');
+    if (!passwordInput || !confirmInput || !matchStatus) return;
+
+    const password = passwordInput.value;
+    const confirmation = confirmInput.value;
+    const requirements = getPasswordRequirements(password);
+    const requirementElements = {
+        length: document.getElementById('passwordLengthStatus'),
+        uppercase: document.getElementById('passwordUppercaseStatus'),
+        lowercase: document.getElementById('passwordLowercaseStatus'),
+        special: document.getElementById('passwordSpecialStatus'),
+        common: document.getElementById('passwordCommonStatus'),
+        predictable: document.getElementById('passwordPatternStatus')
+    };
+    for (const [requirement, element] of Object.entries(requirementElements)) {
+        const satisfied = requirements[requirement];
+        element.classList.toggle('text-emerald-400', satisfied);
+        element.classList.toggle('text-slate-500', !satisfied);
+    }
+    const passwordIsValid = Object.values(requirements).every(Boolean);
+    passwordInput.setAttribute('aria-invalid', String(password.length > 0 && !passwordIsValid));
+
+    const matches = confirmation.length > 0 && password === confirmation;
+    matchStatus.textContent = confirmation.length === 0
+        ? "Re-enter your password to confirm."
+        : matches
+            ? "Passwords match."
+            : "Passwords don't match yet.";
+    matchStatus.classList.toggle('text-emerald-400', matches);
+    matchStatus.classList.toggle('text-red-300', confirmation.length > 0 && !matches);
+    matchStatus.classList.toggle('text-slate-500', confirmation.length === 0);
+    confirmInput.setAttribute('aria-invalid', String(confirmation.length > 0 && !matches));
+}
+
 async function joinHouseholdWithCode() {
     const inviteCode = document.getElementById('householdInviteCode').value.trim();
     if (!inviteCode) {
@@ -133,6 +233,12 @@ async function joinHouseholdWithCode() {
 async function initializeAuthPage() {
     const page = document.body.dataset.authPage;
     if (!page) return;
+
+    if (page === 'signup') {
+        document.getElementById('authPassword')?.addEventListener('input', updateSignupPasswordFeedback);
+        document.getElementById('authPasswordConfirm')?.addEventListener('input', updateSignupPasswordFeedback);
+        updateSignupPasswordFeedback();
+    }
 
     const params = new URLSearchParams(window.location.search);
     const inviteCode = params.get('invite') || localStorage.getItem(pendingInviteKey) || '';
