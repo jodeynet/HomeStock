@@ -3,6 +3,12 @@ const PENDING_HOUSEHOLD_INVITE_KEY = window.HOMESTOCK_PENDING_HOUSEHOLD_INVITE_K
 
 let currentHouseholdId = null;
 let realtimeChannel = null;
+let realtimeConnected = false;
+let realtimeSetupInProgress = false;
+let dataFetchRequestId = 0;
+let householdRefreshTimeout = null;
+let householdRefreshesInProgress = 0;
+let householdRefreshRequested = false;
 let addItemDestination = 'shopping_list';
 let items = [];
 let pantryItems = [];
@@ -90,6 +96,8 @@ async function fetchUserHouseholdId(userId) {
 
         currentHouseholdId = data.household_id;
         setMainHeaderAuthControls(true);
+        window.addEventListener('online', handleConnectionRestored);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
         await fetchAllData();
         await setupRealtimeSubscriptions();
         await loadHouseholdNotes();
@@ -279,12 +287,16 @@ async function fetchAllData() {
         return;
     }
 
+    const requestId = ++dataFetchRequestId;
+    householdRefreshesInProgress += 1;
     try {
         const [listResult, pantryResult, tripResult] = await Promise.all([
             supabaseClient.from('shopping_list').select('*').eq('household_id', currentHouseholdId).order('created_at', { ascending: false }),
             supabaseClient.from('items').select('*').eq('household_id', currentHouseholdId).order('created_at', { ascending: false }),
             supabaseClient.from('shopping_trips').select('*').eq('household_id', currentHouseholdId).order('date', { ascending: false })
         ]);
+
+        if (requestId !== dataFetchRequestId) return;
 
         let hasError = false;
         if (listResult.error) {
@@ -299,15 +311,82 @@ async function fetchAllData() {
             console.error("Failed to fetch shopping_trips for household:", currentHouseholdId, tripResult.error);
             hasError = true;
         }
-        if (hasError) return;
+        if (hasError) {
+            setSyncStatus('Sync error', 'error');
+            return;
+        }
 
         items = listResult.data || [];
         pantryItems = pantryResult.data || [];
         pastTrips = tripResult.data || [];
 
         renderLandscape();
+        if (realtimeConnected) setSyncStatus('Live Connected', 'connected');
     } catch (err) {
         console.error("Unexpected error while fetching household data:", err);
+        if (requestId === dataFetchRequestId) setSyncStatus('Sync error', 'error');
+    } finally {
+        householdRefreshesInProgress -= 1;
+        if (householdRefreshRequested && householdRefreshesInProgress === 0) {
+            householdRefreshRequested = false;
+            scheduleHouseholdRefresh(0);
+        }
+    }
+}
+
+function scheduleHouseholdRefresh(delay = 150) {
+    clearTimeout(householdRefreshTimeout);
+    householdRefreshTimeout = setTimeout(() => {
+        householdRefreshTimeout = null;
+        if (householdRefreshesInProgress > 0) {
+            householdRefreshRequested = true;
+            return;
+        }
+        fetchAllData();
+    }, delay);
+}
+
+function setSyncStatus(text, state) {
+    const status = document.getElementById('syncStatus');
+    if (!status) return;
+    const colorClass = state === 'connected'
+        ? 'text-emerald-400'
+        : state === 'error'
+            ? 'text-red-400'
+            : 'text-amber-400';
+    const dotClass = state === 'connected'
+        ? 'bg-emerald-400 animate-pulse'
+        : state === 'error'
+            ? 'bg-red-400'
+            : 'bg-amber-400 animate-pulse';
+    status.className = `text-[10px] sm:text-[11px] ${colorClass} font-medium flex items-center gap-1.5 mt-0.5`;
+    status.innerHTML = `<span class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${dotClass}"></span> ${text}`;
+}
+
+function handleConnectionRestored() {
+    scheduleHouseholdRefresh(0);
+    if (!realtimeConnected) setupRealtimeSubscriptions();
+}
+
+function handleVisibilityChange() {
+    if (document.visibilityState !== 'visible') return;
+    scheduleHouseholdRefresh(0);
+    if (!realtimeConnected) setupRealtimeSubscriptions();
+}
+
+function handleHouseholdTableDelete(table, payload) {
+    const deletedId = payload.old?.id ?? payload.old?.household_id;
+    if (!deletedId) return;
+
+    const currentRows = table === 'shopping_list'
+        ? items
+        : table === 'items'
+            ? pantryItems
+            : table === 'shopping_trips'
+                ? pastTrips
+                : [];
+    if (currentRows.some(row => row.id === deletedId || row.household_id === deletedId)) {
+        scheduleHouseholdRefresh();
     }
 }
 
@@ -316,43 +395,76 @@ async function setupRealtimeSubscriptions() {
         console.error("Cannot subscribe to realtime changes: currentHouseholdId has not been resolved.");
         return;
     }
+    if (realtimeSetupInProgress) return;
 
-    if (realtimeChannel) {
-        const status = await supabaseClient.removeChannel(realtimeChannel);
-        if (status !== 'ok') console.error("Failed to remove previous realtime channel:", status);
+    realtimeSetupInProgress = true;
+    try {
+        if (realtimeChannel) {
+            realtimeConnected = false;
+            const status = await supabaseClient.removeChannel(realtimeChannel);
+            if (status !== 'ok') console.error("Failed to remove previous realtime channel:", status);
+        }
+
+        setSyncStatus('Connecting...', 'connecting');
+        realtimeChannel = supabaseClient
+            .channel(`homestock-realtime-${currentHouseholdId}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'shopping_list',
+                filter: `household_id=eq.${currentHouseholdId}`
+            }, () => scheduleHouseholdRefresh())
+            .on('postgres_changes', {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'shopping_list'
+            }, payload => handleHouseholdTableDelete('shopping_list', payload))
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'items',
+                filter: `household_id=eq.${currentHouseholdId}`
+            }, () => scheduleHouseholdRefresh())
+            .on('postgres_changes', {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'items'
+            }, payload => handleHouseholdTableDelete('items', payload))
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'shopping_trips',
+                filter: `household_id=eq.${currentHouseholdId}`
+            }, () => scheduleHouseholdRefresh())
+            .on('postgres_changes', {
+                event: 'DELETE',
+                schema: 'public',
+                table: 'shopping_trips'
+            }, payload => handleHouseholdTableDelete('shopping_trips', payload))
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'household_notes',
+                filter: `household_id=eq.${currentHouseholdId}`
+            }, () => loadHouseholdNotes(true))
+            .subscribe((status, err) => {
+                if (status === 'SUBSCRIBED') {
+                    realtimeConnected = true;
+                    setSyncStatus('Live Connected', 'connected');
+                    scheduleHouseholdRefresh(0);
+                    loadHouseholdNotes(true);
+                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    realtimeConnected = false;
+                    setSyncStatus('Reconnecting...', 'connecting');
+                    console.error(`Realtime subscription ${status.toLowerCase()}:`, err || realtimeChannel?.topic);
+                } else if (status === 'CLOSED') {
+                    realtimeConnected = false;
+                    setSyncStatus('Disconnected', 'error');
+                }
+            });
+    } finally {
+        realtimeSetupInProgress = false;
     }
-
-    realtimeChannel = supabaseClient
-        .channel(`homestock-realtime-${currentHouseholdId}`)
-        .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'shopping_list',
-            filter: `household_id=eq.${currentHouseholdId}`
-        }, () => fetchAllData())
-        .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'items',
-            filter: `household_id=eq.${currentHouseholdId}`
-        }, () => fetchAllData())
-        .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'shopping_trips',
-            filter: `household_id=eq.${currentHouseholdId}`
-        }, () => fetchAllData())
-        .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'household_notes',
-            filter: `household_id=eq.${currentHouseholdId}`
-        }, () => loadHouseholdNotes(true))
-        .subscribe((status, err) => {
-            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-                console.error(`Realtime subscription ${status.toLowerCase()}:`, err || realtimeChannel?.topic);
-            }
-        });
 }
 
 function renderLandscape() {
@@ -1022,14 +1134,28 @@ function handleResponsiveLayout() {
 window.addEventListener('resize', handleResponsiveLayout);
 
 // --- STANDARD ACTIONS ---
+function reportItemActionError(action, error) {
+    console.error(`Failed to ${action}:`, error);
+    alert(`Failed to ${action}: ${error.message || error}`);
+}
+
 async function toggleBought(id, status) {
     if (!currentHouseholdId) {
         console.error("Cannot update shopping_list: currentHouseholdId has not been resolved.");
         return;
     }
-    const { error } = await supabaseClient.from('shopping_list').update({ is_bought: !status })
-        .eq('id', id).eq('household_id', currentHouseholdId);
-    if (error) console.error("Failed to update shopping_list item:", error);
+    const { data, error } = await supabaseClient.from('shopping_list').update({ is_bought: !status })
+        .eq('id', id).eq('household_id', currentHouseholdId).select('id').maybeSingle();
+    if (error) {
+        reportItemActionError("update the shopping item", error);
+        return;
+    }
+    if (!data) {
+        alert("This shopping item could not be found. Refresh the page and try again.");
+        await fetchAllData();
+        return;
+    }
+    await fetchAllData();
 }
 
 async function deleteShoppingItem(id) {
@@ -1037,9 +1163,18 @@ async function deleteShoppingItem(id) {
         console.error("Cannot delete shopping_list item: currentHouseholdId has not been resolved.");
         return;
     }
-    const { error } = await supabaseClient.from('shopping_list').delete()
-        .eq('id', id).eq('household_id', currentHouseholdId);
-    if (error) console.error("Failed to delete shopping_list item:", error);
+    const { data, error } = await supabaseClient.from('shopping_list').delete()
+        .eq('id', id).eq('household_id', currentHouseholdId).select('id').maybeSingle();
+    if (error) {
+        reportItemActionError("delete the shopping item", error);
+        return;
+    }
+    if (!data) {
+        alert("This shopping item could not be found. Refresh the page and try again.");
+        await fetchAllData();
+        return;
+    }
+    await fetchAllData();
 }
 
 async function deletePantryItem(id) {
@@ -1047,9 +1182,18 @@ async function deletePantryItem(id) {
         console.error("Cannot delete pantry item: currentHouseholdId has not been resolved.");
         return;
     }
-    const { error } = await supabaseClient.from('items').delete()
-        .eq('id', id).eq('household_id', currentHouseholdId);
-    if (error) console.error("Failed to delete pantry item:", error);
+    const { data, error } = await supabaseClient.from('items').delete()
+        .eq('id', id).eq('household_id', currentHouseholdId).select('id').maybeSingle();
+    if (error) {
+        reportItemActionError("delete the pantry item", error);
+        return;
+    }
+    if (!data) {
+        alert("This pantry item could not be found. Refresh the page and try again.");
+        await fetchAllData();
+        return;
+    }
+    await fetchAllData();
 }
 
 async function decrementPantryItem(id, currentQty, name, category, price, expiry_date) {
@@ -1058,22 +1202,20 @@ async function decrementPantryItem(id, currentQty, name, category, price, expiry
         return;
     }
     if (currentQty > 1) {
-        const { error } = await supabaseClient.from('items').update({ quantity: currentQty - 1 })
-            .eq('id', id).eq('household_id', currentHouseholdId);
+        const { data, error } = await supabaseClient.from('items').update({ quantity: currentQty - 1 })
+            .eq('id', id).eq('household_id', currentHouseholdId).select('id').maybeSingle();
         if (error) {
-            console.error("Failed to decrement pantry item:", error);
+            reportItemActionError("update the pantry quantity", error);
             return;
         }
+        if (!data) {
+            alert("This pantry item could not be found. Refresh the page and try again.");
+            await fetchAllData();
+            return;
+        }
+        await fetchAllData();
     } else {
-        const { error } = await supabaseClient.from('items').delete()
-            .eq('id', id).eq('household_id', currentHouseholdId);
-        if (error) {
-            console.error("Failed to remove depleted pantry item:", error);
-            return;
-        }
-        
-        // When pantry item reaches 0, send it to the "To Buy" list (is_bought: false)
-        const { error: insertError } = await supabaseClient.from('shopping_list').insert({
+        const { data: listItem, error: insertError } = await supabaseClient.from('shopping_list').insert({
             household_id: currentHouseholdId,
             name: name,
             quantity: 1,
@@ -1081,8 +1223,28 @@ async function decrementPantryItem(id, currentQty, name, category, price, expiry
             price: price !== null && price !== undefined && price !== 'null' ? parseFloat(price) : null,
             expiry_date: expiry_date || null,
             is_bought: false
-        });
-        if (insertError) console.error("Failed to move depleted pantry item to shopping_list:", insertError);
+        }).select('id').single();
+        if (insertError) {
+            reportItemActionError("add the depleted pantry item to your shopping list", insertError);
+            return;
+        }
+        const { data: deletedItem, error: deleteError } = await supabaseClient.from('items').delete()
+            .eq('id', id).eq('household_id', currentHouseholdId).select('id').maybeSingle();
+        if (deleteError || !deletedItem) {
+            const { error: rollbackError } = await supabaseClient.from('shopping_list').delete()
+                .eq('id', listItem.id).eq('household_id', currentHouseholdId);
+            if (rollbackError) {
+                console.error("Failed to roll back the shopping item after pantry update failed:", rollbackError);
+            }
+            if (deleteError) {
+                reportItemActionError("remove the depleted pantry item", deleteError);
+            } else {
+                alert("This pantry item could not be found. Refresh the page and try again.");
+            }
+            await fetchAllData();
+            return;
+        }
+        await fetchAllData();
     }
 }
 
@@ -1092,22 +1254,40 @@ async function moveToPantryFromShopping(id) {
         return;
     }
     const item = items.find(i => i.id === id);
-    if (!item) return;
-    const { error: insertError } = await supabaseClient.from('items').insert({
+    if (!item) {
+        alert("This shopping item could not be found. Refresh the page and try again.");
+        await fetchAllData();
+        return;
+    }
+    const { data: pantryItem, error: insertError } = await supabaseClient.from('items').insert({
         household_id: currentHouseholdId,
         name: item.name,
         quantity: item.quantity,
         category: item.category,
         price: item.price,
         expiry_date: item.expiry_date || null
-    });
+    }).select('id').single();
     if (insertError) {
-        console.error("Failed to insert item into pantry:", insertError);
+        reportItemActionError("move the item to the pantry", insertError);
         return;
     }
-    const { error: deleteError } = await supabaseClient.from('shopping_list').delete()
-        .eq('id', id).eq('household_id', currentHouseholdId);
-    if (deleteError) console.error("Failed to remove moved item from shopping_list:", deleteError);
+    const { data: deletedItem, error: deleteError } = await supabaseClient.from('shopping_list').delete()
+        .eq('id', id).eq('household_id', currentHouseholdId).select('id').maybeSingle();
+    if (deleteError || !deletedItem) {
+        const { error: rollbackError } = await supabaseClient.from('items').delete()
+            .eq('id', pantryItem.id).eq('household_id', currentHouseholdId);
+        if (rollbackError) {
+            console.error("Failed to roll back pantry item after shopping update failed:", rollbackError);
+        }
+        if (deleteError) {
+            reportItemActionError("remove the item from the shopping list", deleteError);
+        } else {
+            alert("This shopping item could not be found. Refresh the page and try again.");
+        }
+        await fetchAllData();
+        return;
+    }
+    await fetchAllData();
 }
 
 async function completeCheckout() {
@@ -1140,13 +1320,14 @@ async function completeCheckout() {
             expiry_date: i.expiry_date || null
         });
         if (itemError) {
-            console.error(`Failed to add checked-out item "${i.name}" to pantry:`, itemError);
+            reportItemActionError(`add "${i.name}" to the pantry`, itemError);
             continue;
         }
         const { error: deleteError } = await supabaseClient.from('shopping_list').delete()
             .eq('id', i.id).eq('household_id', currentHouseholdId);
-        if (deleteError) console.error(`Failed to remove checked-out item "${i.name}" from shopping_list:`, deleteError);
+        if (deleteError) reportItemActionError(`remove "${i.name}" from the shopping list`, deleteError);
     }
+    await fetchAllData();
 }
 
 async function deleteTripPrompt(tripId) {
