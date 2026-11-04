@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#020617">
+    <title>Create account — HomeStock</title>
+    <link rel="icon" type="image/png" href="icon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-auth-page="signup" class="tulip-bg min-h-screen text-slate-100 antialiased selection:bg-emerald-600 selection:text-white">
+    <main class="min-h-screen flex items-center justify-center p-4 sm:p-8">
+        <div class="w-full max-w-5xl grid md:grid-cols-2 overflow-hidden rounded-3xl border border-slate-700/70 bg-slate-950/85 shadow-2xl backdrop-blur-xl">
+            <section class="hidden md:flex flex-col justify-between p-10 lg:p-14 bg-gradient-to-br from-indigo-950/90 via-slate-950/80 to-emerald-950/70">
+                <a href="index.html" class="flex items-center gap-3 w-fit">
+                    <span class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                        <i class="ph ph-house-line text-white text-2xl"></i>
+                    </span>
+                    <span class="text-xl font-bold tracking-tight">HomeStock</span>
+                </a>
+                <div class="max-w-sm">
+                    <p class="text-indigo-300 text-xs uppercase tracking-[0.2em] font-bold mb-4">Make room for less stress</p>
+                    <h1 class="text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight">A better rhythm for everyone at home.</h1>
+                    <p class="text-slate-300 mt-5 leading-relaxed">Create your account with an invite from a household member to share one secure, up-to-date home inventory.</p>
+                </div>
+                <p class="text-xs text-slate-500">Your household data stays with your household.</p>
+            </section>
+
+            <section class="p-6 sm:p-10 lg:p-14 flex flex-col justify-center">
+                <a href="index.html" class="md:hidden flex items-center gap-2 mb-9 w-fit">
+                    <span class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center">
+                        <i class="ph ph-house-line text-white text-xl"></i>
+                    </span>
+                    <span class="font-bold">HomeStock</span>
+                </a>
+
+                <div class="mb-8">
+                    <p class="text-sm font-semibold text-indigo-300 mb-2">Get started</p>
+                    <h2 class="text-3xl font-bold tracking-tight">Create your account</h2>
+                    <p class="text-sm text-slate-400 mt-2">Join the household that invited you.</p>
+                </div>
+
+                <form id="authForm" class="space-y-5" onsubmit="event.preventDefault(); handleSignUp();">
+                    <div>
+                        <label for="authEmail" class="block text-sm font-medium text-slate-300 mb-2">Email address</label>
+                        <input id="authEmail" name="email" type="email" autocomplete="email" required placeholder="you@example.com" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition text-white placeholder:text-slate-500">
+                    </div>
+                    <div>
+                        <label for="authPassword" class="block text-sm font-medium text-slate-300 mb-2">Password</label>
+                        <input id="authPassword" name="password" type="password" autocomplete="new-password" minlength="6" required placeholder="At least 6 characters" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition text-white placeholder:text-slate-500">
+                        <p class="text-xs text-slate-500 mt-2">Use at least 6 characters.</p>
+                    </div>
+                    <div>
+                        <label for="householdInviteCode" class="block text-sm font-medium text-slate-300 mb-2">Household invite code</label>
+                        <input id="householdInviteCode" name="inviteCode" type="text" autocomplete="off" required placeholder="Paste the code or open your invite link" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition text-white placeholder:text-slate-500">
+                    </div>
+                    <p id="authStatus" role="status" aria-live="polite" class="hidden text-sm leading-relaxed"></p>
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 text-white font-semibold py-3.5 rounded-xl shadow-lg shadow-indigo-700/20 transition">Create account</button>
+                </form>
+                <button id="joinHouseholdButton" onclick="joinHouseholdWithCode()" class="hidden w-full mt-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3.5 rounded-xl transition">Join household</button>
+                <p class="text-center text-sm text-slate-400 mt-7">Already have an account? <a href="login.html" class="text-emerald-300 hover:text-emerald-200 font-semibold">Log in</a></p>
+            </section>
+        </div>
+    </main>
+    <script src="auth.js"></script>
+</body>
+</html>

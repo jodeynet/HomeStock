@@ -1,8 +1,9 @@
-const SUPABASE_URL = "https://drgomsdieutwrmttpwel.supabase.co";
-const SUPABASE_KEY = "sb_publishable_6rRceRDFbYhhYGRoGwlpIw_QRqVgRni";
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabaseClient = window.supabaseClient;
+const PENDING_HOUSEHOLD_INVITE_KEY = window.HOMESTOCK_PENDING_HOUSEHOLD_INVITE_KEY;
 
 let currentHouseholdId = null;
+let realtimeChannel = null;
+let addItemDestination = 'shopping_list';
 let items = [];
 let pantryItems = [];
 let pastTrips = [];
@@ -15,38 +16,84 @@ let html5QrCodeScanner = null;
 
 // --- AUTHENTICATION & INITIALIZATION ---
 async function checkUserAuth() {
-    const { data: { session }, error } = await supabaseClient.auth.getSession();
-    
-    if (!session || error) {
-        // Show login modal if not authenticated
-        const authModal = document.getElementById('authModal');
-        if (authModal) authModal.classList.remove('hidden');
+    try {
+        const { data, error } = await supabaseClient.auth.getSession();
+        if (error) {
+            console.error("Failed to restore Supabase session:", error);
+            window.location.replace('login.html');
+            return false;
+        }
+
+        const session = data?.session;
+        if (!session?.user?.id) {
+            currentHouseholdId = null;
+            setMainHeaderAuthControls(false);
+            const inviteCode = new URLSearchParams(window.location.search).get('invite');
+            window.location.replace(inviteCode
+                ? `signup.html?invite=${encodeURIComponent(inviteCode)}`
+                : 'login.html');
+            return false;
+        }
+
+        const pendingInviteCode = localStorage.getItem(PENDING_HOUSEHOLD_INVITE_KEY);
+        if (pendingInviteCode) {
+            if (!(await window.HomeStockAuth.acceptHouseholdInvite(pendingInviteCode))) {
+                localStorage.removeItem(PENDING_HOUSEHOLD_INVITE_KEY);
+                window.location.replace('login.html?join=1');
+                return false;
+            }
+        }
+        return await fetchUserHouseholdId(session.user.id);
+    } catch (err) {
+        console.error("Unexpected error while checking authentication:", err);
+        window.location.replace('login.html');
         return false;
-    } else {
-        // Hide login modal and fetch household
-        const authModal = document.getElementById('authModal');
-        if (authModal) authModal.classList.add('hidden');
-        
-        await fetchUserHouseholdId(session.user.id);
-        return true;
+    }
+}
+
+function setMainHeaderAuthControls(visible) {
+    for (const id of ['logoutButton', 'inviteHouseholdButton']) {
+        const button = document.getElementById(id);
+        if (!button) continue;
+        button.classList.toggle('hidden', !visible);
+        button.classList.toggle('flex', visible);
     }
 }
 
 async function fetchUserHouseholdId(userId) {
-    const { data, error } = await supabaseClient
-        .from('household_members')
-        .select('household_id')
-        .eq('user_id', userId)
-        .single();
+    try {
+        const { data, error } = await supabaseClient
+            .from('household_members')
+            .select('household_id')
+            .eq('user_id', userId)
+            .maybeSingle();
 
-    if (error || !data) {
-        console.error("No household found for user:", error);
-        alert("Your account is not assigned to a household yet. Contact your admin or link your user ID in Supabase.");
-        currentHouseholdId = null;
-    } else {
+        if (error) {
+            console.error("Failed to look up household_members for user:", error);
+            currentHouseholdId = null;
+            setMainHeaderAuthControls(false);
+            window.location.replace('login.html?join=1');
+            return false;
+        }
+        if (!data?.household_id) {
+            console.error("No household_members row with a household_id was found for user:", userId);
+            currentHouseholdId = null;
+            setMainHeaderAuthControls(false);
+            window.location.replace('login.html?join=1');
+            return false;
+        }
+
         currentHouseholdId = data.household_id;
-        fetchAllData();
-        setupRealtimeSubscriptions();
+        setMainHeaderAuthControls(true);
+        await fetchAllData();
+        await setupRealtimeSubscriptions();
+        return true;
+    } catch (err) {
+        console.error("Unexpected error while resolving the user's household:", err);
+        currentHouseholdId = null;
+        setMainHeaderAuthControls(false);
+        window.location.replace('login.html?join=1');
+        return false;
     }
 }
 
@@ -59,65 +106,241 @@ async function handleLogin() {
         return;
     }
 
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    
-    if (error) {
-        alert("Login failed: " + error.message);
-    } else {
+    try {
+        const inviteCode = document.getElementById('householdInviteCode').value.trim();
+        if (inviteCode) localStorage.setItem(PENDING_HOUSEHOLD_INVITE_KEY, inviteCode);
+        const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) {
+            console.error("Supabase login failed:", error);
+            alert("Login failed: " + error.message);
+            return;
+        }
         window.location.reload();
+    } catch (err) {
+        console.error("Unexpected error during login:", err);
+        alert("Login failed. See the browser console for details.");
     }
 }
 
 async function handleSignUp() {
     const email = document.getElementById('authEmail').value.trim();
     const password = document.getElementById('authPassword').value;
+    const inviteCode = document.getElementById('householdInviteCode').value.trim();
 
-    if (!email || !password) {
-        alert("Please enter both email and password to sign up.");
+    if (!email || !password || !inviteCode) {
+        alert("Please enter your email, password, and a household invite code to sign up.");
         return;
     }
 
-    const { data, error } = await supabaseClient.auth.signUp({ email, password });
-    
-    if (error) {
-        alert("Sign up failed: " + error.message);
-    } else {
-        alert("Account created successfully! Please check your email or log in.");
+    try {
+        localStorage.setItem(PENDING_HOUSEHOLD_INVITE_KEY, inviteCode);
+        const { data, error } = await supabaseClient.auth.signUp({ email, password });
+        if (error) {
+            console.error("Supabase sign-up failed:", error);
+            localStorage.removeItem(PENDING_HOUSEHOLD_INVITE_KEY);
+            alert("Sign up failed: " + error.message);
+            return;
+        }
+
+        if (data.session) {
+            const joined = await acceptHouseholdInvite(inviteCode);
+            if (joined) {
+                window.location.reload();
+                return;
+            }
+            setJoinHouseholdButtonVisible(true);
+            showAuthModal();
+            return;
+        }
+
+        alert("Account created. Confirm your email, then log in on this browser to finish joining the household.");
+    } catch (err) {
+        console.error("Unexpected error during sign-up:", err);
+        alert("Sign up failed. See the browser console for details.");
     }
 }
 
+async function acceptHouseholdInvite(inviteCode) {
+    const { data, error } = await supabaseClient.rpc('accept_household_invite', {
+        p_invite_code: inviteCode
+    });
+    if (error) {
+        console.error("Failed to accept household invite:", error);
+        alert("Could not join that household: " + error.message);
+        return false;
+    }
+
+    localStorage.removeItem(PENDING_HOUSEHOLD_INVITE_KEY);
+    console.info("Joined household using invite code:", data);
+    return true;
+}
+
+async function joinHouseholdWithCode() {
+    const inviteCode = document.getElementById('householdInviteCode').value.trim();
+    if (!inviteCode) {
+        alert("Enter a household invite code first.");
+        return;
+    }
+
+    try {
+        const { data, error } = await supabaseClient.auth.getSession();
+        if (error) {
+            console.error("Failed to check the session before joining a household:", error);
+            alert("Unable to check your login. Please try again.");
+            return;
+        }
+        if (!data.session?.user?.id) {
+            alert("Create an account or log in before joining a household.");
+            return;
+        }
+
+        localStorage.setItem(PENDING_HOUSEHOLD_INVITE_KEY, inviteCode);
+        if (await acceptHouseholdInvite(inviteCode)) window.location.reload();
+    } catch (err) {
+        console.error("Unexpected error while joining a household:", err);
+        alert("Could not join the household. See the browser console for details.");
+    }
+}
+
+async function createHouseholdInvite() {
+    try {
+        const { data, error } = await supabaseClient.rpc('create_household_invite');
+        if (error) {
+            console.error("Failed to create household invite:", error);
+            alert("Could not create an invite: " + error.message);
+            return;
+        }
+
+        const invite = Array.isArray(data) ? data[0] : data;
+        if (!invite?.invite_code) {
+            console.error("Household invite RPC returned no invite code:", data);
+            alert("The invite was not created. See the browser console for details.");
+            return;
+        }
+
+        document.getElementById('generatedHouseholdInviteCode').value = invite.invite_code;
+        const expiry = new Date(invite.expires_at);
+        document.getElementById('householdInviteExpiry').innerText =
+            `Share this code with someone you want to add. It can be used up to 10 times and expires ${expiry.toLocaleString()}.`;
+        document.getElementById('householdInviteModal').classList.remove('hidden');
+    } catch (err) {
+        console.error("Unexpected error while creating a household invite:", err);
+        alert("Could not create an invite. See the browser console for details.");
+    }
+}
+
+async function copyHouseholdInviteCode() {
+    const codeInput = document.getElementById('generatedHouseholdInviteCode');
+    if (!codeInput?.value) {
+        console.error("No household invite code is available to copy.");
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(codeInput.value);
+        alert("Invite code copied.");
+    } catch (err) {
+        console.error("Clipboard copy failed:", err);
+        codeInput.select();
+        alert("Copy the selected invite code and share it with the person joining.");
+    }
+}
+
+function closeHouseholdInviteModal() {
+    document.getElementById('householdInviteModal').classList.add('hidden');
+}
+
 async function handleLogout() {
-    await supabaseClient.auth.signOut();
-    window.location.reload();
+    try {
+        const { error } = await supabaseClient.auth.signOut();
+        if (error) {
+            console.error("Supabase logout failed:", error);
+            alert("Logout failed: " + error.message);
+            return;
+        }
+        localStorage.removeItem(PENDING_HOUSEHOLD_INVITE_KEY);
+        window.location.reload();
+    } catch (err) {
+        console.error("Unexpected error during logout:", err);
+        alert("Logout failed. See the browser console for details.");
+    }
 }
 
 // --- DATA FETCHING & REALTIME ---
 async function fetchAllData() {
-    if (!currentHouseholdId) return;
+    if (!currentHouseholdId) {
+        console.error("Cannot fetch household data: currentHouseholdId has not been resolved.");
+        return;
+    }
 
     try {
-        const { data: listData } = await supabaseClient.from('shopping_list').select('*').eq('household_id', currentHouseholdId).order('created_at', { ascending: false });
-        items = listData || [];
+        const [listResult, pantryResult, tripResult] = await Promise.all([
+            supabaseClient.from('shopping_list').select('*').eq('household_id', currentHouseholdId).order('created_at', { ascending: false }),
+            supabaseClient.from('items').select('*').eq('household_id', currentHouseholdId).order('created_at', { ascending: false }),
+            supabaseClient.from('shopping_trips').select('*').eq('household_id', currentHouseholdId).order('date', { ascending: false })
+        ]);
 
-        const { data: pantryData } = await supabaseClient.from('items').select('*').eq('household_id', currentHouseholdId).order('created_at', { ascending: false });
-        pantryItems = pantryData || [];
+        let hasError = false;
+        if (listResult.error) {
+            console.error("Failed to fetch shopping_list for household:", currentHouseholdId, listResult.error);
+            hasError = true;
+        }
+        if (pantryResult.error) {
+            console.error("Failed to fetch items for household:", currentHouseholdId, pantryResult.error);
+            hasError = true;
+        }
+        if (tripResult.error) {
+            console.error("Failed to fetch shopping_trips for household:", currentHouseholdId, tripResult.error);
+            hasError = true;
+        }
+        if (hasError) return;
 
-        const { data: tripData } = await supabaseClient.from('shopping_trips').select('*').eq('household_id', currentHouseholdId).order('date', { ascending: false });
-        pastTrips = tripData || [];
+        items = listResult.data || [];
+        pantryItems = pantryResult.data || [];
+        pastTrips = tripResult.data || [];
 
         renderLandscape();
     } catch (err) {
-        console.error("Sync error:", err);
+        console.error("Unexpected error while fetching household data:", err);
     }
 }
 
-function setupRealtimeSubscriptions() {
-    supabaseClient
-        .channel('homestock-realtime-channel')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_list' }, () => fetchAllData())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, () => fetchAllData())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_trips' }, () => fetchAllData())
-        .subscribe();
+async function setupRealtimeSubscriptions() {
+    if (!currentHouseholdId) {
+        console.error("Cannot subscribe to realtime changes: currentHouseholdId has not been resolved.");
+        return;
+    }
+
+    if (realtimeChannel) {
+        const status = await supabaseClient.removeChannel(realtimeChannel);
+        if (status !== 'ok') console.error("Failed to remove previous realtime channel:", status);
+    }
+
+    realtimeChannel = supabaseClient
+        .channel(`homestock-realtime-${currentHouseholdId}`)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'shopping_list',
+            filter: `household_id=eq.${currentHouseholdId}`
+        }, () => fetchAllData())
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'items',
+            filter: `household_id=eq.${currentHouseholdId}`
+        }, () => fetchAllData())
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'shopping_trips',
+            filter: `household_id=eq.${currentHouseholdId}`
+        }, () => fetchAllData())
+        .subscribe((status, err) => {
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                console.error(`Realtime subscription ${status.toLowerCase()}:`, err || realtimeChannel?.topic);
+            }
+        });
 }
 
 function renderLandscape() {
@@ -539,13 +762,22 @@ function renderFrequentBuys() {
 
         const addBtn = div.querySelector(`#add-freq-${encodeURIComponent(name)}`);
         addBtn.onclick = async () => {
-            await supabaseClient.from('shopping_list').insert({
+            if (!currentHouseholdId) {
+                console.error("Cannot add frequent buy: currentHouseholdId has not been resolved.");
+                return;
+            }
+            const { error } = await supabaseClient.from('shopping_list').insert({
                 household_id: currentHouseholdId,
                 name: name,
                 quantity: 1,
                 category: 'Pantry',
                 is_bought: true
             });
+            if (error) {
+                console.error("Failed to add frequent buy to shopping_list:", error);
+                alert("Failed to add item: " + error.message);
+                return;
+            }
             alert(`Added "${name}" to your In-Cart list!`);
         };
 
@@ -722,25 +954,57 @@ window.addEventListener('resize', handleResponsiveLayout);
 
 // --- STANDARD ACTIONS ---
 async function toggleBought(id, status) {
-    await supabaseClient.from('shopping_list').update({ is_bought: !status }).eq('id', id);
+    if (!currentHouseholdId) {
+        console.error("Cannot update shopping_list: currentHouseholdId has not been resolved.");
+        return;
+    }
+    const { error } = await supabaseClient.from('shopping_list').update({ is_bought: !status })
+        .eq('id', id).eq('household_id', currentHouseholdId);
+    if (error) console.error("Failed to update shopping_list item:", error);
 }
 
 async function deleteShoppingItem(id) {
-    await supabaseClient.from('shopping_list').delete().eq('id', id);
+    if (!currentHouseholdId) {
+        console.error("Cannot delete shopping_list item: currentHouseholdId has not been resolved.");
+        return;
+    }
+    const { error } = await supabaseClient.from('shopping_list').delete()
+        .eq('id', id).eq('household_id', currentHouseholdId);
+    if (error) console.error("Failed to delete shopping_list item:", error);
 }
 
 async function deletePantryItem(id) {
-    await supabaseClient.from('items').delete().eq('id', id);
+    if (!currentHouseholdId) {
+        console.error("Cannot delete pantry item: currentHouseholdId has not been resolved.");
+        return;
+    }
+    const { error } = await supabaseClient.from('items').delete()
+        .eq('id', id).eq('household_id', currentHouseholdId);
+    if (error) console.error("Failed to delete pantry item:", error);
 }
 
 async function decrementPantryItem(id, currentQty, name, category, price, expiry_date) {
+    if (!currentHouseholdId) {
+        console.error("Cannot update pantry item: currentHouseholdId has not been resolved.");
+        return;
+    }
     if (currentQty > 1) {
-        await supabaseClient.from('items').update({ quantity: currentQty - 1 }).eq('id', id);
+        const { error } = await supabaseClient.from('items').update({ quantity: currentQty - 1 })
+            .eq('id', id).eq('household_id', currentHouseholdId);
+        if (error) {
+            console.error("Failed to decrement pantry item:", error);
+            return;
+        }
     } else {
-        await supabaseClient.from('items').delete().eq('id', id);
+        const { error } = await supabaseClient.from('items').delete()
+            .eq('id', id).eq('household_id', currentHouseholdId);
+        if (error) {
+            console.error("Failed to remove depleted pantry item:", error);
+            return;
+        }
         
         // When pantry item reaches 0, send it to the "To Buy" list (is_bought: false)
-        await supabaseClient.from('shopping_list').insert({
+        const { error: insertError } = await supabaseClient.from('shopping_list').insert({
             household_id: currentHouseholdId,
             name: name,
             quantity: 1,
@@ -749,13 +1013,18 @@ async function decrementPantryItem(id, currentQty, name, category, price, expiry
             expiry_date: expiry_date || null,
             is_bought: false
         });
+        if (insertError) console.error("Failed to move depleted pantry item to shopping_list:", insertError);
     }
 }
 
 async function moveToPantryFromShopping(id) {
+    if (!currentHouseholdId) {
+        console.error("Cannot move shopping item to pantry: currentHouseholdId has not been resolved.");
+        return;
+    }
     const item = items.find(i => i.id === id);
     if (!item) return;
-    await supabaseClient.from('items').insert({
+    const { error: insertError } = await supabaseClient.from('items').insert({
         household_id: currentHouseholdId,
         name: item.name,
         quantity: item.quantity,
@@ -763,23 +1032,37 @@ async function moveToPantryFromShopping(id) {
         price: item.price,
         expiry_date: item.expiry_date || null
     });
-    await supabaseClient.from('shopping_list').delete().eq('id', id);
+    if (insertError) {
+        console.error("Failed to insert item into pantry:", insertError);
+        return;
+    }
+    const { error: deleteError } = await supabaseClient.from('shopping_list').delete()
+        .eq('id', id).eq('household_id', currentHouseholdId);
+    if (deleteError) console.error("Failed to remove moved item from shopping_list:", deleteError);
 }
 
 async function completeCheckout() {
+    if (!currentHouseholdId) {
+        console.error("Cannot complete checkout: currentHouseholdId has not been resolved.");
+        return;
+    }
     const bought = items.filter(i => i.is_bought);
     if (bought.length === 0) return;
     const total = bought.reduce((sum, i) => sum + ((i.price || 0) * i.quantity), 0);
     const formatted = bought.map(i => `${i.name} | Qty: ${i.quantity} | €${(i.price || 0).toFixed(2)}`);
 
-    await supabaseClient.from('shopping_trips').insert({ 
+    const { error: tripError } = await supabaseClient.from('shopping_trips').insert({ 
         household_id: currentHouseholdId, 
         total_amount: total, 
         items: formatted 
     });
+    if (tripError) {
+        console.error("Failed to save shopping trip:", tripError);
+        return;
+    }
 
     for (const i of bought) {
-        await supabaseClient.from('items').insert({ 
+        const { error: itemError } = await supabaseClient.from('items').insert({ 
             household_id: currentHouseholdId, 
             name: i.name, 
             quantity: i.quantity, 
@@ -787,28 +1070,45 @@ async function completeCheckout() {
             price: i.price,
             expiry_date: i.expiry_date || null
         });
-        await supabaseClient.from('shopping_list').delete().eq('id', i.id);
+        if (itemError) {
+            console.error(`Failed to add checked-out item "${i.name}" to pantry:`, itemError);
+            continue;
+        }
+        const { error: deleteError } = await supabaseClient.from('shopping_list').delete()
+            .eq('id', i.id).eq('household_id', currentHouseholdId);
+        if (deleteError) console.error(`Failed to remove checked-out item "${i.name}" from shopping_list:`, deleteError);
     }
 }
 
 async function deleteTripPrompt(tripId) {
+    if (!currentHouseholdId) {
+        console.error("Cannot modify shopping trip: currentHouseholdId has not been resolved.");
+        return;
+    }
     const trip = pastTrips.find(t => t.id === tripId);
     if (!trip || !confirm("Restore items back to active To-Buy list?")) {
-        if (trip) await supabaseClient.from('shopping_trips').delete().eq('id', tripId);
+        if (trip) {
+            const { error } = await supabaseClient.from('shopping_trips').delete()
+                .eq('id', tripId).eq('household_id', currentHouseholdId);
+            if (error) console.error("Failed to delete shopping trip:", error);
+        }
         return;
     }
 
     for (const raw of trip.items || []) {
         let name = raw.split(' | ')[0];
-        await supabaseClient.from('shopping_list').insert({ 
+        const { error } = await supabaseClient.from('shopping_list').insert({ 
             household_id: currentHouseholdId, 
             name: name, 
             quantity: 1, 
             category: 'Pantry', 
             is_bought: false 
         });
+        if (error) console.error(`Failed to restore "${name}" to shopping_list:`, error);
     }
-    await supabaseClient.from('shopping_trips').delete().eq('id', tripId);
+    const { error } = await supabaseClient.from('shopping_trips').delete()
+        .eq('id', tripId).eq('household_id', currentHouseholdId);
+    if (error) console.error("Failed to delete restored shopping trip:", error);
 }
 
 function toggleTripHistory() {
@@ -817,8 +1117,11 @@ function toggleTripHistory() {
     document.getElementById('tripHistoryChevron').classList.toggle('rotate-180', tripHistoryOpen);
 }
 
-function openAddModal() {
+function openAddModal(destination = 'shopping_list') {
     stopBarcodeScanner();
+    addItemDestination = destination;
+    document.getElementById('addItemModalTitle').innerText =
+        destination === 'items' ? 'Add Item to Pantry Stock' : 'Add Item to Shopping List';
     document.getElementById('inputName').value = '';
     document.getElementById('inputQty').value = '1';
     document.getElementById('inputPrice').value = '';
@@ -827,12 +1130,20 @@ function openAddModal() {
     document.getElementById('addItemModal').classList.remove('hidden');
 }
 
+function openAddStockModal() {
+    openAddModal('items');
+}
+
 function closeAddModal() { 
     stopBarcodeScanner();
     document.getElementById('addItemModal').classList.add('hidden'); 
 }
 
 async function saveNewItem() {
+    if (!currentHouseholdId) {
+        console.error("Cannot save item: currentHouseholdId has not been resolved.");
+        return;
+    }
     stopBarcodeScanner();
     const name = document.getElementById('inputName').value.trim();
     const qty = parseInt(document.getElementById('inputQty').value) || 1;
@@ -845,18 +1156,26 @@ async function saveNewItem() {
         return;
     }
 
-    // Manual/Scanned items saved from modal go straight to In-Cart / Bought section
-    await supabaseClient.from('shopping_list').insert({ 
-        household_id: currentHouseholdId, 
-        name, 
-        quantity: qty, 
-        category, 
-        price, 
-        expiry_date,
-        is_bought: true 
-    });
+    const table = addItemDestination === 'items' ? 'items' : 'shopping_list';
+    const itemData = {
+        household_id: currentHouseholdId,
+        name,
+        quantity: qty,
+        category,
+        price,
+        expiry_date
+    };
+    if (table === 'shopping_list') itemData.is_bought = true;
+
+    const { error } = await supabaseClient.from(table).insert(itemData);
+    if (error) {
+        console.error(`Failed to save item to ${table}:`, error);
+        alert("Failed to save item: " + error.message);
+        return;
+    }
     
     closeAddModal();
+    await fetchAllData();
 }
 
 function openEditModal(id, source) {
@@ -883,6 +1202,10 @@ function closeEditModal() {
 }
 
 async function saveEditedItem() {
+    if (!currentHouseholdId) {
+        console.error("Cannot update item: currentHouseholdId has not been resolved.");
+        return;
+    }
     const id = document.getElementById('editId').value;
     const source = document.getElementById('editSource').value;
     const name = document.getElementById('editName').value.trim();
@@ -901,7 +1224,12 @@ async function saveEditedItem() {
         expiry_date
     };
 
-    const { error } = await supabaseClient.from(source).update(updateData).eq('id', id);
+    if (source !== 'shopping_list' && source !== 'items') {
+        console.error("Refusing to update item from an unexpected table:", source);
+        return;
+    }
+    const { error } = await supabaseClient.from(source).update(updateData)
+        .eq('id', id).eq('household_id', currentHouseholdId);
 
     if (error) {
         console.error("Update failed:", error);
@@ -934,5 +1262,9 @@ function closeReceiptModal() { document.getElementById('receiptModal').classList
 function openWhatsNew() { document.getElementById('whatsNewModal').classList.remove('hidden'); }
 function closeWhatsNew() { document.getElementById('whatsNewModal').classList.add('hidden'); }
 
-// Run authentication check on app load
-checkUserAuth();
+// The auth modal is declared after this script in index.html, so wait until parsing is complete.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checkUserAuth, { once: true });
+} else {
+    checkUserAuth();
+}
