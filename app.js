@@ -1,8 +1,8 @@
 const SUPABASE_URL = "https://drgomsdieutwrmttpwel.supabase.co";
 const SUPABASE_KEY = "sb_publishable_6rRceRDFbYhhYGRoGwlpIw_QRqVgRni";
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-const DEFAULT_HOUSEHOLD_ID = "11111111-1111-1111-1111-111111111111";
 
+let currentHouseholdId = null;
 let items = [];
 let pantryItems = [];
 let pastTrips = [];
@@ -13,28 +13,96 @@ let currentHubTab = 'expiry';
 let currentMobileTab = null;
 let html5QrCodeScanner = null;
 
-function parseTags(rawTags) {
-    if (!rawTags) return [];
-    if (Array.isArray(rawTags)) return rawTags;
-    try {
-        const parsed = JSON.parse(rawTags);
-        if (Array.isArray(parsed)) return parsed;
-        if (typeof parsed === 'string') return [parsed];
-    } catch (e) {
-        return rawTags.split(',').map(t => t.trim()).filter(Boolean);
+// --- AUTHENTICATION & INITIALIZATION ---
+async function checkUserAuth() {
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
+    
+    if (!session || error) {
+        // Show login modal if not authenticated
+        const authModal = document.getElementById('authModal');
+        if (authModal) authModal.classList.remove('hidden');
+        return false;
+    } else {
+        // Hide login modal and fetch household
+        const authModal = document.getElementById('authModal');
+        if (authModal) authModal.classList.add('hidden');
+        
+        await fetchUserHouseholdId(session.user.id);
+        return true;
     }
-    return [];
 }
 
+async function fetchUserHouseholdId(userId) {
+    const { data, error } = await supabaseClient
+        .from('household_members')
+        .select('household_id')
+        .eq('user_id', userId)
+        .single();
+
+    if (error || !data) {
+        console.error("No household found for user:", error);
+        alert("Your account is not assigned to a household yet. Contact your admin or link your user ID in Supabase.");
+        currentHouseholdId = null;
+    } else {
+        currentHouseholdId = data.household_id;
+        fetchAllData();
+        setupRealtimeSubscriptions();
+    }
+}
+
+async function handleLogin() {
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+
+    if (!email || !password) {
+        alert("Please enter both email and password.");
+        return;
+    }
+
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    
+    if (error) {
+        alert("Login failed: " + error.message);
+    } else {
+        window.location.reload();
+    }
+}
+
+async function handleSignUp() {
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+
+    if (!email || !password) {
+        alert("Please enter both email and password to sign up.");
+        return;
+    }
+
+    const { data, error } = await supabaseClient.auth.signUp({ email, password });
+    
+    if (error) {
+        alert("Sign up failed: " + error.message);
+    } else {
+        alert("Account created successfully! Please check your email or log in.");
+    }
+}
+
+async function handleLogout() {
+    await supabaseClient.auth.signOut();
+    window.location.reload();
+}
+
+// --- DATA FETCHING & REALTIME ---
 async function fetchAllData() {
+    if (!currentHouseholdId) return;
+
     try {
-        const { data: listData } = await supabaseClient.from('shopping_list').select('*').order('created_at', { ascending: false });
+        const { data: listData } = await supabaseClient.from('shopping_list').select('*').eq('household_id', currentHouseholdId).order('created_at', { ascending: false });
         items = listData || [];
 
-        const { data: pantryData } = await supabaseClient.from('items').select('*').order('created_at', { ascending: false });
+        const { data: pantryData } = await supabaseClient.from('items').select('*').eq('household_id', currentHouseholdId).order('created_at', { ascending: false });
         pantryItems = pantryData || [];
 
-        const { data: tripData } = await supabaseClient.from('shopping_trips').select('*').order('date', { ascending: false });
+        const { data: tripData } = await supabaseClient.from('shopping_trips').select('*').eq('household_id', currentHouseholdId).order('date', { ascending: false });
         pastTrips = tripData || [];
 
         renderLandscape();
@@ -472,7 +540,7 @@ function renderFrequentBuys() {
         const addBtn = div.querySelector(`#add-freq-${encodeURIComponent(name)}`);
         addBtn.onclick = async () => {
             await supabaseClient.from('shopping_list').insert({
-                household_id: DEFAULT_HOUSEHOLD_ID,
+                household_id: currentHouseholdId,
                 name: name,
                 quantity: 1,
                 category: 'Pantry',
@@ -673,7 +741,7 @@ async function decrementPantryItem(id, currentQty, name, category, price, expiry
         
         // When pantry item reaches 0, send it to the "To Buy" list (is_bought: false)
         await supabaseClient.from('shopping_list').insert({
-            household_id: DEFAULT_HOUSEHOLD_ID,
+            household_id: currentHouseholdId,
             name: name,
             quantity: 1,
             category: category || 'Pantry',
@@ -688,7 +756,7 @@ async function moveToPantryFromShopping(id) {
     const item = items.find(i => i.id === id);
     if (!item) return;
     await supabaseClient.from('items').insert({
-        household_id: DEFAULT_HOUSEHOLD_ID,
+        household_id: currentHouseholdId,
         name: item.name,
         quantity: item.quantity,
         category: item.category,
@@ -705,14 +773,14 @@ async function completeCheckout() {
     const formatted = bought.map(i => `${i.name} | Qty: ${i.quantity} | €${(i.price || 0).toFixed(2)}`);
 
     await supabaseClient.from('shopping_trips').insert({ 
-        household_id: DEFAULT_HOUSEHOLD_ID, 
+        household_id: currentHouseholdId, 
         total_amount: total, 
         items: formatted 
     });
 
     for (const i of bought) {
         await supabaseClient.from('items').insert({ 
-            household_id: DEFAULT_HOUSEHOLD_ID, 
+            household_id: currentHouseholdId, 
             name: i.name, 
             quantity: i.quantity, 
             category: i.category, 
@@ -733,7 +801,7 @@ async function deleteTripPrompt(tripId) {
     for (const raw of trip.items || []) {
         let name = raw.split(' | ')[0];
         await supabaseClient.from('shopping_list').insert({ 
-            household_id: DEFAULT_HOUSEHOLD_ID, 
+            household_id: currentHouseholdId, 
             name: name, 
             quantity: 1, 
             category: 'Pantry', 
@@ -779,7 +847,7 @@ async function saveNewItem() {
 
     // Manual/Scanned items saved from modal go straight to In-Cart / Bought section
     await supabaseClient.from('shopping_list').insert({ 
-        household_id: DEFAULT_HOUSEHOLD_ID, 
+        household_id: currentHouseholdId, 
         name, 
         quantity: qty, 
         category, 
@@ -866,6 +934,5 @@ function closeReceiptModal() { document.getElementById('receiptModal').classList
 function openWhatsNew() { document.getElementById('whatsNewModal').classList.remove('hidden'); }
 function closeWhatsNew() { document.getElementById('whatsNewModal').classList.add('hidden'); }
 
-// Initial Mount & Start Live Realtime Listeners
-fetchAllData();
-setupRealtimeSubscriptions();
+// Run authentication check on app load
+checkUserAuth();
