@@ -9,6 +9,7 @@ let dataFetchRequestId = 0;
 let householdRefreshTimeout = null;
 let householdRefreshesInProgress = 0;
 let householdRefreshRequested = false;
+let checkoutInProgress = false;
 let addItemDestination = 'shopping_list';
 let items = [];
 let pantryItems = [];
@@ -418,7 +419,12 @@ async function fetchAllData() {
             hasError = true;
         }
         if (hasError) {
-            setSyncStatus('Sync error', 'error');
+            const failedTable = listResult.error
+                ? 'Shopping sync error'
+                : pantryResult.error
+                    ? 'Pantry sync error'
+                    : 'Trip history sync error';
+            setSyncStatus(failedTable, 'error');
             return;
         }
 
@@ -441,9 +447,17 @@ async function fetchAllData() {
 }
 
 function scheduleHouseholdRefresh(delay = 150) {
+    if (checkoutInProgress) {
+        householdRefreshRequested = true;
+        return;
+    }
     clearTimeout(householdRefreshTimeout);
     householdRefreshTimeout = setTimeout(() => {
         householdRefreshTimeout = null;
+        if (checkoutInProgress) {
+            householdRefreshRequested = true;
+            return;
+        }
         if (householdRefreshesInProgress > 0) {
             householdRefreshRequested = true;
             return;
@@ -998,7 +1012,7 @@ function renderFrequentBuys() {
             </button>
         `;
 
-        const addBtn = div.querySelector(`#add-freq-${encodeURIComponent(name)}`);
+        const addBtn = div.querySelector('button');
         addBtn.onclick = async () => {
             if (!currentHouseholdId) {
                 console.error("Cannot add frequent buy: currentHouseholdId has not been resolved.");
@@ -1410,39 +1424,66 @@ async function completeCheckout() {
         console.error("Cannot complete checkout: currentHouseholdId has not been resolved.");
         return;
     }
+    if (checkoutInProgress) return;
     const bought = items.filter(i => i.is_bought);
     if (bought.length === 0) return;
+    checkoutInProgress = true;
+    const checkoutButton = document.getElementById('checkoutBtn');
+    if (checkoutButton) checkoutButton.disabled = true;
     const total = bought.reduce((sum, i) => sum + ((i.price || 0) * i.quantity), 0);
     const formatted = bought.map(i => `${i.name} | Qty: ${i.quantity} | €${(i.price || 0).toFixed(2)}`);
 
-    const { error: tripError } = await supabaseClient.from('shopping_trips').insert({ 
-        household_id: currentHouseholdId, 
-        total_amount: total, 
-        items: formatted 
-    });
-    if (tripError) {
-        console.error("Failed to save shopping trip:", tripError);
-        return;
-    }
-
-    for (const i of bought) {
-        const { error: itemError } = await supabaseClient.from('items').insert({ 
-            household_id: currentHouseholdId, 
-            name: i.name, 
-            quantity: i.quantity, 
-            category: i.category, 
-            price: i.price,
-            expiry_date: i.expiry_date || null
+    try {
+        const { error: tripError } = await supabaseClient.from('shopping_trips').insert({
+            household_id: currentHouseholdId,
+            total_amount: total,
+            items: formatted
         });
-        if (itemError) {
-            reportItemActionError(`add "${i.name}" to the pantry`, itemError);
-            continue;
+        if (tripError) {
+            console.error("Failed to save shopping trip:", tripError);
+            setSyncStatus('Checkout failed', 'error');
+            alert(`Checkout failed while saving trip history: ${tripError.message}`);
+            return;
         }
-        const { error: deleteError } = await supabaseClient.from('shopping_list').delete()
-            .eq('id', i.id).eq('household_id', currentHouseholdId);
-        if (deleteError) reportItemActionError(`remove "${i.name}" from the shopping list`, deleteError);
+
+        for (const i of bought) {
+            const { error: itemError } = await supabaseClient.from('items').insert({
+                household_id: currentHouseholdId,
+                name: i.name,
+                quantity: i.quantity,
+                category: i.category,
+                price: i.price,
+                expiry_date: i.expiry_date || null
+            });
+            if (itemError) {
+                console.error(`Failed to add "${i.name}" to pantry during checkout:`, itemError);
+                setSyncStatus('Checkout incomplete', 'error');
+                alert(`Checkout was recorded, but "${i.name}" could not be added to the pantry: ${itemError.message}`);
+                continue;
+            }
+            const { data: deletedItem, error: deleteError } = await supabaseClient.from('shopping_list').delete()
+                .eq('id', i.id).eq('household_id', currentHouseholdId).select('id').maybeSingle();
+            if (deleteError || !deletedItem) {
+                console.error(`Failed to remove "${i.name}" from shopping list during checkout:`, deleteError);
+                setSyncStatus('Checkout incomplete', 'error');
+                alert(deleteError
+                    ? `Checkout was recorded, but "${i.name}" could not be removed from the shopping list: ${deleteError.message}`
+                    : `Checkout was recorded, but "${i.name}" is no longer on the shopping list.`);
+            }
+        }
+    } catch (error) {
+        console.error("Unexpected error during checkout:", error);
+        setSyncStatus('Checkout failed', 'error');
+        alert("Checkout failed unexpectedly. Please refresh and check your list and trip history.");
+    } finally {
+        checkoutInProgress = false;
+        if (checkoutButton) checkoutButton.disabled = false;
+        await fetchAllData();
+        if (householdRefreshRequested) {
+            householdRefreshRequested = false;
+            scheduleHouseholdRefresh(0);
+        }
     }
-    await fetchAllData();
 }
 
 async function deleteTripPrompt(tripId) {
