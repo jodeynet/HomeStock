@@ -43,6 +43,9 @@
                 <button onclick="openWhatsNew()" class="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
                     <i class="ph ph-sparkles text-amber-400 text-sm sm:text-base"></i> <span class="hidden sm:inline">What's New</span>
                 </button>
+                <button id="enableNotificationsButton" onclick="enableBrowserNotifications()" class="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm" aria-label="Enable browser notifications">
+                    <i class="ph ph-bell text-indigo-300 text-sm sm:text-base"></i> <span class="hidden sm:inline">Enable alerts</span>
+                </button>
                 <button id="inviteHouseholdButton" onclick="createHouseholdInvite()" class="hidden p-2 sm:px-3.5 sm:py-2 rounded-xl bg-indigo-900/60 border border-indigo-700/60 hover:bg-indigo-800 text-slate-200 text-xs font-semibold items-center gap-1.5 transition shadow-sm" aria-label="Invite household members">
                     <i class="ph ph-user-plus text-sm sm:text-base"></i> <span class="hidden sm:inline">Invite</span>
                 </button>
@@ -52,6 +55,8 @@
             </div>
         </div>
     </header>
+
+    <div id="householdNotificationRegion" class="fixed top-20 right-4 z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2" aria-live="polite" aria-label="Household change notifications"></div>
 
     <!-- Main Stacked Grid Container -->
     <main class="max-w-[96%] xl:max-w-[92%] mx-auto p-3 sm:p-6 grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
@@ -359,7 +364,7 @@
         </div>
     </div>
 </div>
-    <script src="auth.js"></script>
+    <script src="auth.js?v=household-signup-mode"></script>
     <script src="app.js"></script>
 </body>
 </html>

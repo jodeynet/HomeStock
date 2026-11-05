@@ -63,11 +63,94 @@ async function checkUserAuth() {
 }
 
 function setMainHeaderAuthControls(visible) {
-    for (const id of ['logoutButton', 'inviteHouseholdButton']) {
+    for (const id of ['logoutButton', 'inviteHouseholdButton', 'enableNotificationsButton']) {
         const button = document.getElementById(id);
         if (!button) continue;
         button.classList.toggle('hidden', !visible);
         button.classList.toggle('flex', visible);
+    }
+    updateBrowserNotificationsButton();
+}
+
+function updateBrowserNotificationsButton() {
+    const button = document.getElementById('enableNotificationsButton');
+    if (!button) return;
+
+    const permission = 'Notification' in window ? Notification.permission : 'unsupported';
+    const label = permission === 'granted'
+        ? 'Browser alerts enabled'
+        : permission === 'denied'
+            ? 'Browser alerts blocked'
+            : permission === 'unsupported'
+                ? 'Browser alerts unavailable'
+                : 'Enable alerts';
+    button.querySelector('span')?.replaceChildren(document.createTextNode(label));
+    button.setAttribute('aria-label', label);
+    button.disabled = permission === 'granted' || permission === 'denied' || permission === 'unsupported';
+    button.classList.toggle('opacity-60', button.disabled);
+    button.classList.toggle('cursor-not-allowed', button.disabled);
+}
+
+async function enableBrowserNotifications() {
+    if (!('Notification' in window)) {
+        showHouseholdNotification('Browser alerts are not supported in this browser.');
+        updateBrowserNotificationsButton();
+        return;
+    }
+
+    try {
+        const permission = await Notification.requestPermission();
+        updateBrowserNotificationsButton();
+        if (permission === 'granted') {
+            showHouseholdNotification('Browser alerts enabled for household changes.');
+        } else if (permission === 'denied') {
+            showHouseholdNotification('Browser alerts are blocked. You can enable them in your browser settings.');
+        }
+    } catch (error) {
+        console.error("Failed to request browser notification permission:", error);
+        showHouseholdNotification('Could not enable browser alerts. Check your browser settings.');
+    }
+}
+
+function showHouseholdNotification(message) {
+    const region = document.getElementById('householdNotificationRegion');
+    if (!region) return;
+
+    const notification = document.createElement('div');
+    notification.className = 'rounded-xl border border-indigo-400/30 bg-slate-900/95 px-4 py-3 text-sm text-slate-100 shadow-xl backdrop-blur';
+    notification.textContent = message;
+    region.append(notification);
+    setTimeout(() => notification.remove(), 6000);
+}
+
+function notifyHouseholdChange(table, eventType, payload) {
+    const labels = {
+        shopping_list: 'Shopping list',
+        items: 'Pantry',
+        shopping_trips: 'Shopping trip',
+        household_notes: 'Household notes'
+    };
+    const label = labels[table];
+    if (!label) return;
+
+    const row = eventType === 'DELETE' ? payload.old : payload.new;
+    const rowName = row?.name || row?.item_name || row?.title;
+    const action = eventType === 'INSERT'
+        ? 'added'
+        : eventType === 'DELETE'
+            ? 'removed'
+            : 'updated';
+    const message = table === 'household_notes'
+        ? 'Household notes updated'
+        : `${label}${rowName ? `: ${String(rowName).slice(0, 60)}` : ''} ${action}`;
+
+    showHouseholdNotification(message);
+    if (document.visibilityState === 'hidden' && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+            new Notification('HomeStock household update', { body: message, icon: 'icon.png' });
+        } catch (error) {
+            console.error("Failed to show a browser notification:", error);
+        }
     }
 }
 
@@ -409,8 +492,14 @@ function handleHouseholdTableDelete(table, payload) {
                 ? pastTrips
                 : [];
     if (currentRows.some(row => row.id === deletedId || row.household_id === deletedId)) {
+        notifyHouseholdChange(table, 'DELETE', payload);
         scheduleHouseholdRefresh();
     }
+}
+
+function handleHouseholdTableChange(table, payload) {
+    notifyHouseholdChange(table, payload.eventType, payload);
+    scheduleHouseholdRefresh();
 }
 
 async function setupRealtimeSubscriptions() {
@@ -436,7 +525,7 @@ async function setupRealtimeSubscriptions() {
                 schema: 'public',
                 table: 'shopping_list',
                 filter: `household_id=eq.${currentHouseholdId}`
-            }, () => scheduleHouseholdRefresh())
+            }, payload => handleHouseholdTableChange('shopping_list', payload))
             .on('postgres_changes', {
                 event: 'DELETE',
                 schema: 'public',
@@ -447,7 +536,7 @@ async function setupRealtimeSubscriptions() {
                 schema: 'public',
                 table: 'items',
                 filter: `household_id=eq.${currentHouseholdId}`
-            }, () => scheduleHouseholdRefresh())
+            }, payload => handleHouseholdTableChange('items', payload))
             .on('postgres_changes', {
                 event: 'DELETE',
                 schema: 'public',
@@ -458,7 +547,7 @@ async function setupRealtimeSubscriptions() {
                 schema: 'public',
                 table: 'shopping_trips',
                 filter: `household_id=eq.${currentHouseholdId}`
-            }, () => scheduleHouseholdRefresh())
+            }, payload => handleHouseholdTableChange('shopping_trips', payload))
             .on('postgres_changes', {
                 event: 'DELETE',
                 schema: 'public',
@@ -469,7 +558,10 @@ async function setupRealtimeSubscriptions() {
                 schema: 'public',
                 table: 'household_notes',
                 filter: `household_id=eq.${currentHouseholdId}`
-            }, () => loadHouseholdNotes(true))
+            }, payload => {
+                notifyHouseholdChange('household_notes', payload.eventType, payload);
+                loadHouseholdNotes(true);
+            })
             .subscribe((status, err) => {
                 if (status === 'SUBSCRIBED') {
                     realtimeConnected = true;

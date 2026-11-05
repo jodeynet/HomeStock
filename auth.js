@@ -372,6 +372,9 @@ async function initializeAuthPage() {
         const modeInput = document.querySelector(`input[name="householdMode"][value="${mode}"]`);
         if (modeInput) modeInput.checked = true;
         updateSignupHouseholdMode(mode);
+        document.querySelectorAll('input[name="householdMode"]').forEach(input => {
+            input.addEventListener('change', () => setAuthStatus(''));
+        });
     }
     const signupLink = document.getElementById('signupLink');
     if (signupLink && inviteField) {
