@@ -96,6 +96,7 @@ async function fetchUserHouseholdId(userId) {
 
         currentHouseholdId = data.household_id;
         setMainHeaderAuthControls(true);
+        await updateHouseholdName();
         window.addEventListener('online', handleConnectionRestored);
         document.addEventListener('visibilitychange', handleVisibilityChange);
         await fetchAllData();
@@ -109,6 +110,28 @@ async function fetchUserHouseholdId(userId) {
         window.location.replace('login.html?join=1');
         return false;
     }
+}
+
+async function updateHouseholdName() {
+    const nameElement = document.getElementById('householdNameDisplay');
+    if (!nameElement) return;
+
+    const { data, error } = await supabaseClient
+        .from('households')
+        .select('name')
+        .eq('id', currentHouseholdId)
+        .maybeSingle();
+    if (error) {
+        console.error("Failed to load the household name:", error);
+        nameElement.textContent = ' - Household';
+        document.title = 'HomeStock - Household';
+        return;
+    }
+
+    const householdName = typeof data?.name === 'string' ? data.name.trim() : '';
+    const displayName = householdName || 'Household';
+    nameElement.textContent = ` - ${displayName}`;
+    document.title = `HomeStock - ${displayName}`;
 }
 
 async function handleLogin() {

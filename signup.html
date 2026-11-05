@@ -25,7 +25,7 @@
                 <div class="max-w-sm">
                     <p class="text-indigo-300 text-xs uppercase tracking-[0.2em] font-bold mb-4">Make room for less stress</p>
                     <h1 class="text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight">A better rhythm for everyone at home.</h1>
-                    <p class="text-slate-300 mt-5 leading-relaxed">You’ve been invited to join a household on HomeStock. Create your account to share shopping lists, pantry updates, and the little things that keep home running smoothly.</p>
+                    <p class="text-slate-300 mt-5 leading-relaxed">Join a household you’ve been invited to, or create a new HomeStock household for your home. Keep shopping lists and pantry updates together in one shared place.</p>
                 </div>
                 <p class="text-xs text-slate-500">Your household data stays with your household.</p>
             </section>
@@ -41,15 +41,26 @@
                 <div class="mb-8">
                     <p class="text-sm font-semibold text-indigo-300 mb-2">Get started</p>
                     <h2 class="text-3xl font-bold tracking-tight">Create your account</h2>
-                    <p class="text-sm text-slate-400 mt-2">Create your account and start sharing your household’s shopping list and pantry.</p>
+                    <p class="text-sm text-slate-400 mt-2">Join your household or create a new one to get started.</p>
                 </div>
 
                 <form id="authForm" class="space-y-5" onsubmit="event.preventDefault(); handleSignUp();">
-                    <div>
+                    <fieldset id="householdModeOptions" class="space-y-2">
+                        <legend class="block text-sm font-medium text-slate-300 mb-2">How would you like to get started?</legend>
+                        <label class="flex items-center gap-3 bg-slate-900/70 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 cursor-pointer">
+                            <input type="radio" name="householdMode" value="create" class="accent-indigo-500">
+                            Create a new household
+                        </label>
+                        <label class="flex items-center gap-3 bg-slate-900/70 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 cursor-pointer">
+                            <input type="radio" name="householdMode" value="join" class="accent-indigo-500">
+                            Join with an invite code
+                        </label>
+                    </fieldset>
+                    <div id="authEmailField">
                         <label for="authEmail" class="block text-sm font-medium text-slate-300 mb-2">Email address</label>
                         <input id="authEmail" name="email" type="email" autocomplete="email" required placeholder="you@example.com" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition text-white placeholder:text-slate-500">
                     </div>
-                    <div>
+                    <div id="authPasswordField">
                         <label for="authPassword" class="block text-sm font-medium text-slate-300 mb-2">Password</label>
                         <input id="authPassword" name="password" type="password" autocomplete="new-password" minlength="7" required placeholder="Create a strong password" aria-describedby="passwordRequirements" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition text-white placeholder:text-slate-500">
                         <ul id="passwordRequirements" class="text-xs text-slate-500 mt-2 space-y-1" aria-live="polite">
@@ -61,19 +72,24 @@
                             <li id="passwordPatternStatus">Avoid repeated characters and sequences</li>
                         </ul>
                     </div>
-                    <div>
+                    <div id="authPasswordConfirmField">
                         <label for="authPasswordConfirm" class="block text-sm font-medium text-slate-300 mb-2">Confirm password</label>
                         <input id="authPasswordConfirm" name="passwordConfirm" type="password" autocomplete="new-password" required placeholder="Re-enter your password" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition text-white placeholder:text-slate-500">
                         <p id="passwordMatchStatus" class="text-xs text-slate-500 mt-2" aria-live="polite">Re-enter your password to confirm.</p>
                     </div>
-                    <div>
+                    <div id="householdNameField">
+                        <label for="householdName" class="block text-sm font-medium text-slate-300 mb-2">Household name</label>
+                        <input id="householdName" name="householdName" type="text" maxlength="60" autocomplete="organization" placeholder="e.g. The Smith Family" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition text-white placeholder:text-slate-500">
+                    </div>
+                    <div id="householdInviteField" class="hidden">
                         <label for="householdInviteCode" class="block text-sm font-medium text-slate-300 mb-2">Household invite code</label>
-                        <input id="householdInviteCode" name="inviteCode" type="text" autocomplete="off" required placeholder="Paste the code or open your invite link" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition text-white placeholder:text-slate-500">
+                        <input id="householdInviteCode" name="inviteCode" type="text" autocomplete="off" placeholder="Paste the code or open your invite link" class="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition text-white placeholder:text-slate-500">
                     </div>
                     <p id="authStatus" role="status" aria-live="polite" class="hidden text-sm leading-relaxed"></p>
-                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 text-white font-semibold py-3.5 rounded-xl shadow-lg shadow-indigo-700/20 transition">Create account</button>
+                    <button id="signupSubmitButton" type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400 text-white font-semibold py-3.5 rounded-xl shadow-lg shadow-indigo-700/20 transition">Create account</button>
                 </form>
                 <button id="joinHouseholdButton" onclick="joinHouseholdWithCode()" class="hidden w-full mt-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3.5 rounded-xl transition">Join household</button>
+                <button id="createHouseholdButton" onclick="finishHouseholdCreation()" class="hidden w-full mt-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3.5 rounded-xl transition">Create my household</button>
                 <p class="text-center text-sm text-slate-400 mt-7">Already have an account? <a href="login.html" class="text-emerald-300 hover:text-emerald-200 font-semibold">Log in</a></p>
             </section>
         </div>

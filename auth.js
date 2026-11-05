@@ -1,5 +1,6 @@
 const authClient = window.supabaseClient;
 const pendingInviteKey = window.HOMESTOCK_PENDING_HOUSEHOLD_INVITE_KEY;
+const pendingHouseholdNameKey = 'homestock_pending_household_name';
 
 function setAuthStatus(message, isError = false) {
     const status = document.getElementById('authStatus');
@@ -31,6 +32,38 @@ async function acceptHouseholdInvite(inviteCode) {
     return true;
 }
 
+async function createHouseholdForCurrentUser(householdName) {
+    const name = householdName.trim();
+    if (!name || name.length > 60) {
+        setAuthStatus("Enter a household name between 1 and 60 characters.", true);
+        return false;
+    }
+
+    try {
+        const { data, error } = await authClient.rpc('create_household_for_current_user', {
+            p_household_name: name
+        });
+        if (error) {
+            console.error("Failed to create household:", error);
+            setAuthStatus(`Could not create your household: ${error.message}`, true);
+            return false;
+        }
+        if (typeof data !== 'string' || !data) {
+            console.error("Household creation RPC returned no household ID:", data);
+            setAuthStatus("Your household could not be confirmed. Please try again.", true);
+            return false;
+        }
+    } catch (error) {
+        console.error("Unexpected error while creating a household:", error);
+        setAuthStatus("Could not create your household. Please try again.", true);
+        return false;
+    }
+
+    localStorage.removeItem(pendingHouseholdNameKey);
+    localStorage.removeItem(pendingInviteKey);
+    return true;
+}
+
 async function handleLogin() {
     const email = document.getElementById('authEmail').value.trim();
     const password = document.getElementById('authPassword').value;
@@ -41,10 +74,21 @@ async function handleLogin() {
     }
 
     try {
-        const { error } = await authClient.auth.signInWithPassword({ email, password });
+        const { data, error } = await authClient.auth.signInWithPassword({ email, password });
         if (error) {
             console.error("Supabase login failed:", error);
             setAuthStatus(error.message, true);
+            return;
+        }
+        const householdName = localStorage.getItem(pendingHouseholdNameKey)
+            || (data.user?.user_metadata?.household_setup_mode === 'create'
+                ? data.user.user_metadata.household_name
+                : '');
+        if (householdName) {
+            const setupUrl = new URL('signup.html', window.location.href);
+            setupUrl.searchParams.set('createHousehold', '1');
+            setupUrl.searchParams.set('householdName', householdName);
+            window.location.assign(setupUrl.href);
             return;
         }
         if (inviteCode) localStorage.setItem(pendingInviteKey, inviteCode);
@@ -59,9 +103,19 @@ async function handleSignUp() {
     const email = document.getElementById('authEmail').value.trim();
     const password = document.getElementById('authPassword').value;
     const passwordConfirm = document.getElementById('authPasswordConfirm').value;
+    const householdMode = document.querySelector('input[name="householdMode"]:checked')?.value || 'create';
     const inviteCode = document.getElementById('householdInviteCode').value.trim();
-    if (!email || !password || !inviteCode) {
-        setAuthStatus("Enter your email, password, and household invite code.", true);
+    const householdName = document.getElementById('householdName').value.trim();
+    if (!email || !password) {
+        setAuthStatus("Enter your email and password.", true);
+        return;
+    }
+    if (householdMode === 'join' && !inviteCode) {
+        setAuthStatus("Enter a household invite code.", true);
+        return;
+    }
+    if (householdMode === 'create' && (!householdName || householdName.length > 60)) {
+        setAuthStatus("Enter a household name between 1 and 60 characters.", true);
         return;
     }
     const passwordRequirements = getPasswordRequirements(password);
@@ -76,34 +130,49 @@ async function handleSignUp() {
     }
 
     try {
-        localStorage.setItem(pendingInviteKey, inviteCode);
         const confirmationUrl = new URL('signup.html', window.location.href);
-        confirmationUrl.searchParams.set('invite', inviteCode);
+        const userMetadata = {};
+        if (householdMode === 'join') {
+            localStorage.setItem(pendingInviteKey, inviteCode);
+            confirmationUrl.searchParams.set('invite', inviteCode);
+        } else {
+            localStorage.setItem(pendingHouseholdNameKey, householdName);
+            confirmationUrl.searchParams.set('createHousehold', '1');
+            confirmationUrl.searchParams.set('householdName', householdName);
+            userMetadata.household_setup_mode = 'create';
+            userMetadata.household_name = householdName;
+        }
         const { data, error } = await authClient.auth.signUp({
             email,
             password,
             options: {
-                emailRedirectTo: confirmationUrl.href
+                emailRedirectTo: confirmationUrl.href,
+                data: userMetadata
             }
         });
         if (error) {
             console.error("Supabase sign-up failed:", error);
             localStorage.removeItem(pendingInviteKey);
+            localStorage.removeItem(pendingHouseholdNameKey);
             setAuthStatus(error.message, true);
             return;
         }
 
         if (data.session) {
-            if (await acceptHouseholdInvite(inviteCode)) {
+            const setupSucceeded = householdMode === 'join'
+                ? await acceptHouseholdInvite(inviteCode)
+                : await createHouseholdForCurrentUser(householdName);
+            if (setupSucceeded) {
                 window.location.assign('index.html');
             } else {
                 document.getElementById('authForm')?.classList.add('hidden');
-                setButtonVisible('joinHouseholdButton', true);
+                setButtonVisible(householdMode === 'join' ? 'joinHouseholdButton' : 'createHouseholdButton', true);
             }
             return;
         }
 
-        setAuthStatus("Account created. Confirm your email, then log in here to finish joining the household.");
+        const setupAction = householdMode === 'join' ? 'joining the household' : 'creating your household';
+        setAuthStatus(`Account created. Confirm your email to finish ${setupAction}.`);
     } catch (error) {
         console.error("Unexpected error during sign-up:", error);
         setAuthStatus("Sign-up failed. Please try again.", true);
@@ -203,11 +272,29 @@ function updateSignupPasswordFeedback() {
     confirmInput.setAttribute('aria-invalid', String(confirmation.length > 0 && !matches));
 }
 
+function updateSignupHouseholdMode(mode) {
+    const isJoining = mode === 'join';
+    document.getElementById('householdNameField')?.classList.toggle('hidden', isJoining);
+    document.getElementById('householdInviteField')?.classList.toggle('hidden', !isJoining);
+    const householdName = document.getElementById('householdName');
+    const inviteCode = document.getElementById('householdInviteCode');
+    if (householdName) householdName.required = !isJoining;
+    if (inviteCode) inviteCode.required = isJoining;
+}
+
 async function joinHouseholdWithCode() {
     const inviteCode = document.getElementById('householdInviteCode').value.trim();
     if (!inviteCode) {
         setAuthStatus("Enter a household invite code first.", true);
+        document.getElementById('householdInviteCode').focus();
         return;
+    }
+
+    const joinButton = document.getElementById('joinHouseholdButton');
+    const originalButtonText = joinButton?.textContent;
+    if (joinButton) {
+        joinButton.disabled = true;
+        joinButton.textContent = "Joining...";
     }
 
     try {
@@ -223,10 +310,32 @@ async function joinHouseholdWithCode() {
         }
 
         localStorage.setItem(pendingInviteKey, inviteCode);
-        if (await acceptHouseholdInvite(inviteCode)) window.location.assign('index.html');
+        if (await acceptHouseholdInvite(inviteCode)) {
+            window.location.assign('index.html');
+            return;
+        }
     } catch (error) {
         console.error("Unexpected error while joining a household:", error);
         setAuthStatus("Could not join the household. Please try again.", true);
+    } finally {
+        if (joinButton) {
+            joinButton.disabled = false;
+            joinButton.textContent = originalButtonText;
+        }
+    }
+}
+
+async function finishHouseholdCreation() {
+    const householdName = localStorage.getItem(pendingHouseholdNameKey)
+        || document.getElementById('householdName')?.value.trim()
+        || '';
+    try {
+        if (await createHouseholdForCurrentUser(householdName)) {
+            window.location.assign('index.html');
+        }
+    } catch (error) {
+        console.error("Unexpected error while creating a household:", error);
+        setAuthStatus("Could not create your household. Please try again.", true);
     }
 }
 
@@ -237,13 +346,33 @@ async function initializeAuthPage() {
     if (page === 'signup') {
         document.getElementById('authPassword')?.addEventListener('input', updateSignupPasswordFeedback);
         document.getElementById('authPasswordConfirm')?.addEventListener('input', updateSignupPasswordFeedback);
+        document.querySelectorAll('input[name="householdMode"]').forEach(input => {
+            input.addEventListener('change', () => updateSignupHouseholdMode(input.value));
+        });
         updateSignupPasswordFeedback();
     }
 
     const params = new URLSearchParams(window.location.search);
+    if (params.has('invite') && params.get('createHousehold') !== '1') {
+        localStorage.removeItem(pendingHouseholdNameKey);
+    }
     const inviteCode = params.get('invite') || localStorage.getItem(pendingInviteKey) || '';
     const inviteField = document.getElementById('householdInviteCode');
     if (inviteField) inviteField.value = inviteCode;
+    const householdNameField = document.getElementById('householdName');
+    const householdName = params.get('householdName')
+        || localStorage.getItem(pendingHouseholdNameKey)
+        || '';
+    if (householdNameField) householdNameField.value = householdName;
+    if (params.get('createHousehold') === '1' && householdName) {
+        localStorage.setItem(pendingHouseholdNameKey, householdName);
+    }
+    if (page === 'signup') {
+        const mode = params.get('createHousehold') === '1' || !inviteCode ? 'create' : 'join';
+        const modeInput = document.querySelector(`input[name="householdMode"][value="${mode}"]`);
+        if (modeInput) modeInput.checked = true;
+        updateSignupHouseholdMode(mode);
+    }
     const signupLink = document.getElementById('signupLink');
     if (signupLink && inviteField) {
         const updateSignupLink = () => {
@@ -284,8 +413,45 @@ async function initializeAuthPage() {
         return;
     }
 
-    const form = document.getElementById('authForm');
-    if (form) form.classList.add('hidden');
+    const setupMode = data.session.user.user_metadata?.household_setup_mode;
+    const storedHouseholdName = localStorage.getItem(pendingHouseholdNameKey);
+    const pendingName = householdName
+        || storedHouseholdName
+        || (setupMode === 'create' ? data.session.user.user_metadata?.household_name : '');
+    const hasPendingHouseholdCreation = params.get('createHousehold') === '1'
+        || Boolean(storedHouseholdName)
+        || setupMode === 'create';
+    if (pendingName && hasPendingHouseholdCreation) {
+        localStorage.setItem(pendingHouseholdNameKey, pendingName);
+        if (page === 'login') {
+            const setupUrl = new URL('signup.html', window.location.href);
+            setupUrl.searchParams.set('createHousehold', '1');
+            setupUrl.searchParams.set('householdName', pendingName);
+            window.location.replace(setupUrl.href);
+            return;
+        }
+        if (await createHouseholdForCurrentUser(pendingName)) {
+            window.location.replace('index.html');
+            return;
+        }
+        document.getElementById('authForm')?.classList.add('hidden');
+        setButtonVisible('createHouseholdButton', true);
+        return;
+    }
+
+    if (page === 'login') {
+        for (const id of ['authEmailField', 'authPasswordField', 'loginSubmitButton']) {
+            document.getElementById(id)?.classList.add('hidden');
+        }
+    } else {
+        for (const id of ['householdModeOptions', 'authEmailField', 'authPasswordField', 'authPasswordConfirmField', 'householdNameField', 'signupSubmitButton']) {
+            document.getElementById(id)?.classList.add('hidden');
+        }
+        document.getElementById('householdInviteField')?.classList.remove('hidden');
+    }
+    const inviteInput = document.getElementById('householdInviteCode');
+    if (inviteInput) inviteInput.required = true;
+    document.getElementById('inviteOptionalNote')?.classList.add('hidden');
     setButtonVisible('joinHouseholdButton', true);
     setAuthStatus("You are signed in, but haven't joined a household yet. Enter an invite code to continue.");
 }
