@@ -56,3 +56,11 @@ body {
     border: 1px solid rgba(51, 65, 85, 0.6);
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
 }
+
+.app-tour-highlight {
+    position: relative !important;
+    z-index: 81 !important;
+    outline: 3px solid rgba(129, 140, 248, 0.95);
+    outline-offset: 4px;
+    border-radius: 0.75rem;
+}

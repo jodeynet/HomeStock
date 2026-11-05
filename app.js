@@ -10,6 +10,9 @@ let householdRefreshTimeout = null;
 let householdRefreshesInProgress = 0;
 let householdRefreshRequested = false;
 let checkoutInProgress = false;
+let appTourStepIndex = 0;
+let appTourCurrentTarget = null;
+let appTourUserId = null;
 let addItemDestination = 'shopping_list';
 let items = [];
 let pantryItems = [];
@@ -186,6 +189,7 @@ async function fetchUserHouseholdId(userId) {
         await fetchAllData();
         await setupRealtimeSubscriptions();
         await loadHouseholdNotes();
+        maybeStartFirstLoginTour(userId);
         return true;
     } catch (err) {
         console.error("Unexpected error while resolving the user's household:", err);
@@ -193,6 +197,155 @@ async function fetchUserHouseholdId(userId) {
         setMainHeaderAuthControls(false);
         window.location.replace('login.html?join=1');
         return false;
+    }
+}
+
+const appTourSteps = [
+    {
+        target: '#sectionShopping',
+        mobileTarget: '#navBtnShopping',
+        mobileTab: 'shopping',
+        title: 'Your shopping list',
+        description: 'Add groceries to your list, then mark the items you put in your cart. Checkout records the trip and moves purchased items into your pantry.'
+    },
+    {
+        target: '#sectionPantry',
+        mobileTarget: '#navBtnPantry',
+        mobileTab: 'pantry',
+        title: 'Pantry inventory',
+        description: 'Keep track of what you have at home. Add stock, update quantities, and remove items as you use them.'
+    },
+    {
+        target: '#sectionHub',
+        mobileTarget: '#navBtnHub',
+        mobileTab: 'hub',
+        title: 'Smart Home Hub',
+        description: 'Check upcoming expiry dates, revisit frequent buys, and keep shared household notes. Use the tabs to switch between these tools.'
+    },
+    {
+        target: '#inviteHouseholdButton',
+        mobileTarget: '#inviteHouseholdButton',
+        title: 'Share with your household',
+        description: 'Create an invite code or link so other members can join and share the same shopping list, pantry, and notes.'
+    },
+    {
+        target: '#enableNotificationsButton',
+        mobileTarget: '#enableNotificationsButton',
+        title: 'Stay up to date',
+        description: 'Changes sync live while HomeStock is open. Enable browser alerts if you also want notifications while this tab is in the background.'
+    }
+];
+
+function maybeStartFirstLoginTour(userId) {
+    const storageKey = `homestock_app_tour_completed_${userId}`;
+    try {
+        if (localStorage.getItem(storageKey) === 'true') return;
+    } catch (error) {
+        console.error("Could not check whether the app tour was completed:", error);
+    }
+    appTourUserId = userId;
+    setTimeout(() => showAppTourStep(0), 500);
+}
+
+function startAppTour(restart = false) {
+    if (!appTourUserId && currentHouseholdId) {
+        supabaseClient.auth.getUser().then(({ data, error }) => {
+            if (error) {
+                console.error("Could not start the app tour:", error);
+                return;
+            }
+            if (data.user?.id) {
+                appTourUserId = data.user.id;
+                showAppTourStep(0);
+            }
+        });
+        return;
+    }
+    if (restart || appTourUserId) showAppTourStep(0);
+}
+
+function positionAppTourCard(target) {
+    const card = document.getElementById('appTourCard');
+    if (!card || !target) return;
+
+    const targetRect = target.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const margin = 16;
+    const left = Math.max(margin, Math.min(
+        targetRect.left + targetRect.width / 2 - cardRect.width / 2,
+        window.innerWidth - cardRect.width - margin
+    ));
+    const below = targetRect.bottom + cardRect.height + margin < window.innerHeight;
+    const top = below
+        ? targetRect.bottom + margin
+        : Math.max(margin, targetRect.top - cardRect.height - margin);
+    card.style.left = `${left}px`;
+    card.style.top = `${top}px`;
+}
+
+function showAppTourStep(index) {
+    const overlay = document.getElementById('appTourOverlay');
+    const step = appTourSteps[index];
+    if (!overlay || !step) {
+        finishAppTour();
+        return;
+    }
+
+    if (appTourCurrentTarget) appTourCurrentTarget.classList.remove('app-tour-highlight');
+    appTourStepIndex = index;
+    if (window.innerWidth < 768 && step.mobileTab) switchMobileTab(step.mobileTab);
+    const selector = window.innerWidth < 768 ? step.mobileTarget : step.target;
+    const target = document.querySelector(selector);
+    if (!target) {
+        console.error("Could not find app-tour target:", selector);
+        finishAppTour();
+        return;
+    }
+
+    appTourCurrentTarget = target;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    target.classList.add('app-tour-highlight');
+    overlay.classList.remove('hidden');
+    document.addEventListener('keydown', handleAppTourKeydown);
+    document.getElementById('appTourProgress').textContent = `Step ${index + 1} of ${appTourSteps.length}`;
+    document.getElementById('appTourTitle').textContent = step.title;
+    document.getElementById('appTourDescription').textContent = step.description;
+    document.getElementById('appTourBackButton').disabled = index === 0;
+    document.getElementById('appTourBackButton').classList.toggle('opacity-50', index === 0);
+    document.getElementById('appTourNextButton').textContent = index === appTourSteps.length - 1 ? 'Done' : 'Next';
+    setTimeout(() => positionAppTourCard(target), 250);
+}
+
+function handleAppTourKeydown(event) {
+    if (event.key === 'Escape') {
+        skipAppTour();
+    } else if (event.key === 'ArrowRight') {
+        moveAppTour(1);
+    } else if (event.key === 'ArrowLeft' && appTourStepIndex > 0) {
+        moveAppTour(-1);
+    }
+}
+
+function moveAppTour(direction) {
+    showAppTourStep(appTourStepIndex + direction);
+}
+
+function skipAppTour() {
+    finishAppTour();
+}
+
+function finishAppTour() {
+    document.getElementById('appTourOverlay')?.classList.add('hidden');
+    document.removeEventListener('keydown', handleAppTourKeydown);
+    if (appTourCurrentTarget) {
+        appTourCurrentTarget.classList.remove('app-tour-highlight');
+        appTourCurrentTarget = null;
+    }
+    if (!appTourUserId) return;
+    try {
+        localStorage.setItem(`homestock_app_tour_completed_${appTourUserId}`, 'true');
+    } catch (error) {
+        console.error("Could not save app-tour completion:", error);
     }
 }
 
