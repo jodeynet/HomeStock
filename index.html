@@ -21,7 +21,7 @@
     <!-- HTML5 QR Code Scanner Library -->
     <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <!-- Custom Stylesheet -->
-    <link rel="stylesheet" href="style.css?v=first-login-tour">
+    <link rel="stylesheet" href="style.css?v=install-shortcut">
 </head>
 <body class="tulip-bg text-slate-100 antialiased min-h-screen pb-24 md:pb-16 selection:bg-blue-600 selection:text-white">
 
@@ -46,6 +46,9 @@
                 <button id="appTourButton" onclick="startAppTour(true)" class="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm" aria-label="Take the app tour">
                     <i class="ph ph-question text-indigo-300 text-sm sm:text-base"></i> <span class="hidden sm:inline">App tour</span>
                 </button>
+                <button id="installAppButton" onclick="installHomeStock()" class="hidden p-2 sm:px-3.5 sm:py-2 rounded-xl bg-emerald-900/60 border border-emerald-700/60 hover:bg-emerald-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm" aria-label="Install HomeStock">
+                    <i class="ph ph-download-simple text-emerald-300 text-sm sm:text-base"></i> <span class="hidden sm:inline">Install</span>
+                </button>
                 <button id="enableNotificationsButton" onclick="enableBrowserNotifications()" class="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm" aria-label="Enable browser notifications">
                     <i class="ph ph-bell text-indigo-300 text-sm sm:text-base"></i> <span class="hidden sm:inline">Enable alerts</span>
                 </button>
@@ -60,6 +63,18 @@
     </header>
 
     <div id="householdNotificationRegion" class="fixed top-20 right-4 z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2" aria-live="polite" aria-label="Household change notifications"></div>
+    <div id="installGuideModal" class="fixed inset-0 z-[70] hidden flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="installGuideTitle" aria-describedby="installGuideDescription">
+        <section class="glass-panel w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h2 id="installGuideTitle" class="text-lg font-bold text-white">Add HomeStock to your Home Screen</h2>
+                    <p id="installGuideDescription" class="mt-2 text-sm leading-relaxed text-slate-300"></p>
+                </div>
+                <button type="button" onclick="closeInstallGuide()" class="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Close install instructions"><i class="ph ph-x"></i></button>
+            </div>
+            <button type="button" onclick="closeInstallGuide()" class="mt-5 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-500">Got it</button>
+        </section>
+    </div>
     <div id="appTourOverlay" class="fixed inset-0 z-[80] hidden" aria-live="polite" aria-label="HomeStock app tour">
         <div class="absolute inset-0 bg-slate-950/75 backdrop-blur-[1px]"></div>
         <section id="appTourCard" class="fixed z-[90] w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-indigo-400/40 bg-slate-900 p-5 shadow-2xl shadow-black/50" role="dialog" aria-modal="true" aria-labelledby="appTourTitle" aria-describedby="appTourDescription">
@@ -383,6 +398,6 @@
     </div>
 </div>
     <script src="auth.js?v=household-signup-mode"></script>
-    <script src="app.js?v=first-login-tour"></script>
+    <script src="app.js?v=install-shortcut"></script>
 </body>
 </html>

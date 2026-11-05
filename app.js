@@ -13,6 +13,7 @@ let checkoutInProgress = false;
 let appTourStepIndex = 0;
 let appTourCurrentTarget = null;
 let appTourUserId = null;
+let deferredInstallPrompt = null;
 let addItemDestination = 'shopping_list';
 let items = [];
 let pantryItems = [];
@@ -199,6 +200,79 @@ async function fetchUserHouseholdId(userId) {
         return false;
     }
 }
+
+function isHomeStockInstalled() {
+    return window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+}
+
+function isIosBrowser() {
+    return /iphone|ipad|ipod/i.test(window.navigator.userAgent)
+        || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+}
+
+function isAndroidBrowser() {
+    return /android/i.test(window.navigator.userAgent);
+}
+
+function updateInstallAppButton() {
+    const button = document.getElementById('installAppButton');
+    if (!button) return;
+    const canOfferInstall = !isHomeStockInstalled()
+        && (Boolean(deferredInstallPrompt) || isIosBrowser() || isAndroidBrowser());
+    button.classList.toggle('hidden', !canOfferInstall);
+}
+
+async function installHomeStock() {
+    if (isHomeStockInstalled()) {
+        showHouseholdNotification('HomeStock is already installed on this device.');
+        updateInstallAppButton();
+        return;
+    }
+
+    if (deferredInstallPrompt) {
+        const promptEvent = deferredInstallPrompt;
+        deferredInstallPrompt = null;
+        updateInstallAppButton();
+        try {
+            await promptEvent.prompt();
+            const choice = await promptEvent.userChoice;
+            if (choice.outcome === 'accepted') {
+                showHouseholdNotification('HomeStock is being installed.');
+            }
+        } catch (error) {
+            console.error("Could not start HomeStock installation:", error);
+            showHouseholdNotification('Could not open the install prompt. Try your browser menu.');
+        }
+        return;
+    }
+
+    const description = document.getElementById('installGuideDescription');
+    if (description && isIosBrowser()) {
+        description.textContent = 'In Safari, tap the Share button, then choose “Add to Home Screen” and confirm.';
+    } else if (description) {
+        description.textContent = 'Open your browser menu and choose “Install HomeStock” or “Add to Home screen”.';
+    }
+    document.getElementById('installGuideModal')?.classList.remove('hidden');
+}
+
+function closeInstallGuide() {
+    document.getElementById('installGuideModal')?.classList.add('hidden');
+}
+
+window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    updateInstallAppButton();
+});
+
+window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    updateInstallAppButton();
+    showHouseholdNotification('HomeStock was installed successfully.');
+});
+
+window.addEventListener('DOMContentLoaded', updateInstallAppButton, { once: true });
 
 const appTourSteps = [
     {
