@@ -2,6 +2,7 @@ const supabaseClient = window.supabaseClient;
 const PENDING_HOUSEHOLD_INVITE_KEY = window.HOMESTOCK_PENDING_HOUSEHOLD_INVITE_KEY;
 
 let currentHouseholdId = null;
+let currentHouseholdRole = null;
 let realtimeChannel = null;
 let realtimeConnected = false;
 let realtimeSetupInProgress = false;
@@ -78,7 +79,7 @@ async function checkUserAuth() {
 }
 
 function setMainHeaderAuthControls(visible) {
-    for (const id of ['logoutButton', 'inviteHouseholdButton', 'enableNotificationsButton']) {
+    for (const id of ['logoutButton', 'inviteHouseholdButton', 'enableNotificationsButton', 'changePasswordButton']) {
         const button = document.getElementById(id);
         if (!button) continue;
         button.classList.toggle('hidden', !visible);
@@ -209,7 +210,7 @@ async function fetchUserHouseholdId(userId) {
     try {
         const { data, error } = await supabaseClient
             .from('household_members')
-            .select('household_id')
+            .select('household_id, role')
             .eq('user_id', userId)
             .maybeSingle();
 
@@ -229,6 +230,13 @@ async function fetchUserHouseholdId(userId) {
         }
 
         currentHouseholdId = data.household_id;
+        currentHouseholdRole = data.role === 'owner' ? 'owner' : 'member';
+        const roleDisplay = document.getElementById('householdRoleDisplay');
+        if (roleDisplay) {
+            roleDisplay.textContent = currentHouseholdRole;
+            roleDisplay.classList.remove('hidden');
+            roleDisplay.setAttribute('aria-label', `Household ${currentHouseholdRole}`);
+        }
         setMainHeaderAuthControls(true);
         await updateHouseholdName();
         window.addEventListener('online', handleConnectionRestored);
@@ -648,6 +656,98 @@ async function copyHouseholdInviteCode() {
 
 function closeHouseholdInviteModal() {
     document.getElementById('householdInviteModal').classList.add('hidden');
+}
+
+function openChangePasswordModal() {
+    const modal = document.getElementById('changePasswordModal');
+    const form = document.getElementById('changePasswordForm');
+    const status = document.getElementById('changePasswordStatus');
+    if (!modal || !form || !status) return;
+
+    form.reset();
+    status.textContent = '';
+    status.classList.add('hidden');
+    modal.classList.remove('hidden');
+    document.getElementById('currentPassword').focus();
+}
+
+function closeChangePasswordModal() {
+    document.getElementById('changePasswordModal')?.classList.add('hidden');
+}
+
+function setChangePasswordStatus(message, isError = false) {
+    const status = document.getElementById('changePasswordStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('text-red-300', isError);
+    status.classList.toggle('text-emerald-300', !isError);
+    status.classList.remove('hidden');
+}
+
+async function changeAccountPassword() {
+    const currentPassword = document.getElementById('currentPassword').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmNewPassword').value;
+    const submitButton = document.getElementById('changePasswordSubmitButton');
+
+    if (!arePasswordRequirementsMet(newPassword)) {
+        setChangePasswordStatus('Your new password must meet all the listed requirements.', true);
+        document.getElementById('newPassword').focus();
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        setChangePasswordStatus("Your new passwords don't match.", true);
+        document.getElementById('confirmNewPassword').focus();
+        return;
+    }
+    if (currentPassword === newPassword) {
+        setChangePasswordStatus('Choose a new password that differs from your current one.', true);
+        document.getElementById('newPassword').focus();
+        return;
+    }
+
+    submitButton.disabled = true;
+    submitButton.textContent = 'Updating…';
+    try {
+        const { data, error: userError } = await supabaseClient.auth.getUser();
+        const email = data?.user?.email;
+        if (userError || !email) {
+            console.error('Could not verify the current account before changing password:', userError);
+            setChangePasswordStatus('Could not verify your account. Please log in again and retry.', true);
+            return;
+        }
+
+        const { error: verificationError } = await supabaseClient.auth.signInWithPassword({
+            email,
+            password: currentPassword
+        });
+        if (verificationError) {
+            if (verificationError.code === 'invalid_credentials' || verificationError.status === 400) {
+                setChangePasswordStatus('Your current password is incorrect.', true);
+            } else {
+                console.error('Could not verify the current password:', verificationError);
+                setChangePasswordStatus(`Could not verify your current password: ${verificationError.message}`, true);
+            }
+            document.getElementById('currentPassword').focus();
+            return;
+        }
+
+        const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+        if (error) {
+            console.error('Password change failed:', error);
+            setChangePasswordStatus(`Could not change your password: ${error.message}`, true);
+            return;
+        }
+
+        document.getElementById('changePasswordForm').reset();
+        setChangePasswordStatus('Your password has been changed successfully.');
+    } catch (error) {
+        console.error('Unexpected error while changing password:', error);
+        setChangePasswordStatus('Could not change your password. Please try again.', true);
+    } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Update password';
+    }
 }
 
 async function handleLogout() {

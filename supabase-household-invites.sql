@@ -94,8 +94,8 @@ begin
         raise exception 'Your account is already assigned to a different household.';
     end if;
 
-    insert into public.household_members (household_id, user_id)
-    values (v_household_id, v_user_id);
+    insert into public.household_members (household_id, user_id, role)
+    values (v_household_id, v_user_id, 'member');
 
     update public.household_invites
     set use_count = v_use_count + 1

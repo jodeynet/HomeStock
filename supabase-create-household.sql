@@ -4,6 +4,36 @@
 alter table public.households
     add column if not exists name text;
 
+alter table public.household_members
+    add column if not exists role text not null default 'member';
+
+update public.household_members
+set role = 'member'
+where role is null;
+
+alter table public.household_members
+    alter column role set default 'member',
+    alter column role set not null;
+
+do $migration$
+begin
+    if not exists (
+        select 1
+        from pg_catalog.pg_constraint
+        where conname = 'household_members_role_check'
+          and conrelid = 'public.household_members'::regclass
+    ) then
+        alter table public.household_members
+            add constraint household_members_role_check
+            check (role in ('owner', 'member'));
+    end if;
+end;
+$migration$;
+
+create unique index if not exists household_members_one_owner_per_household
+    on public.household_members (household_id)
+    where role = 'owner';
+
 create or replace function public.create_household_for_current_user(p_household_name text)
 returns uuid
 language plpgsql
@@ -38,8 +68,8 @@ begin
     values (v_household_name)
     returning id into v_household_id;
 
-    insert into public.household_members (household_id, user_id)
-    values (v_household_id, v_user_id);
+    insert into public.household_members (household_id, user_id, role)
+    values (v_household_id, v_user_id, 'owner');
 
     return v_household_id;
 end;
