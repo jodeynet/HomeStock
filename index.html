@@ -27,7 +27,7 @@
 
     <!-- Top Sticky Header -->
     <header class="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-xl border-b border-slate-800/80">
-        <div class="max-w-[96%] xl:max-w-[92%] mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
+        <div class="relative max-w-[96%] xl:max-w-[92%] mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20 overflow-hidden">
                     <img src="icon.png" alt="HomeStock" class="w-full h-full object-cover">
@@ -38,26 +38,31 @@
                 </div>
             </div>
 
-            <div class="flex items-center gap-2 sm:gap-3">
+            <div class="flex items-center gap-2">
                 <div id="expiryHeaderBadgeContainer"></div>
-                <button onclick="openWhatsNew()" class="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
-                    <i class="ph ph-sparkles text-amber-400 text-sm sm:text-base"></i> <span class="hidden sm:inline">What's New</span>
+                <button id="headerMenuToggle" type="button" onclick="toggleHeaderMenu()" class="lg:hidden w-10 h-10 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 flex items-center justify-center transition shadow-sm" aria-label="Open menu" aria-controls="headerActionsMenu" aria-expanded="false">
+                    <i class="ph ph-list text-xl"></i>
                 </button>
-                <button id="appTourButton" onclick="startAppTour(true)" class="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm" aria-label="Take the app tour">
-                    <i class="ph ph-question text-indigo-300 text-sm sm:text-base"></i> <span class="hidden sm:inline">App tour</span>
-                </button>
-                <button id="installAppButton" onclick="installHomeStock()" class="hidden p-2 sm:px-3.5 sm:py-2 rounded-xl bg-emerald-900/60 border border-emerald-700/60 hover:bg-emerald-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm" aria-label="Install HomeStock">
-                    <i class="ph ph-download-simple text-emerald-300 text-sm sm:text-base"></i> <span class="hidden sm:inline">Install</span>
-                </button>
-                <button id="enableNotificationsButton" onclick="enableBrowserNotifications()" class="p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm" aria-label="Enable browser notifications">
-                    <i class="ph ph-bell text-indigo-300 text-sm sm:text-base"></i> <span class="hidden sm:inline">Enable alerts</span>
-                </button>
-                <button id="inviteHouseholdButton" onclick="createHouseholdInvite()" class="hidden p-2 sm:px-3.5 sm:py-2 rounded-xl bg-indigo-900/60 border border-indigo-700/60 hover:bg-indigo-800 text-slate-200 text-xs font-semibold items-center gap-1.5 transition shadow-sm" aria-label="Invite household members">
-                    <i class="ph ph-user-plus text-sm sm:text-base"></i> <span class="hidden sm:inline">Invite</span>
-                </button>
-                <button id="logoutButton" onclick="handleLogout()" class="hidden p-2 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-red-950/70 hover:border-red-800 text-slate-200 text-xs font-semibold items-center gap-1.5 transition shadow-sm" aria-label="Log out">
-                    <i class="ph ph-sign-out text-sm sm:text-base"></i> <span class="hidden sm:inline">Log out</span>
-                </button>
+                <div id="headerActionsMenu" class="hidden lg:flex absolute z-50 lg:static top-full right-0 mt-2 lg:mt-0 w-56 lg:w-auto flex-col lg:flex-row items-stretch lg:items-center gap-2 lg:gap-3 p-3 lg:p-0 rounded-2xl lg:rounded-none bg-slate-950 border border-slate-800 lg:border-0 shadow-2xl lg:shadow-none">
+                    <button type="button" onclick="openWhatsNew()" class="w-full lg:w-auto justify-start lg:justify-center p-2 lg:px-3.5 lg:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-2 transition shadow-sm">
+                        <i class="ph ph-sparkles text-amber-400 text-base"></i> <span>What's New</span>
+                    </button>
+                    <button id="appTourButton" type="button" onclick="startAppTour(true)" class="w-full lg:w-auto justify-start lg:justify-center p-2 lg:px-3.5 lg:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-2 transition shadow-sm" aria-label="Take the app tour">
+                        <i class="ph ph-question text-indigo-300 text-base"></i> <span>App tour</span>
+                    </button>
+                    <button id="installAppButton" type="button" onclick="installHomeStock()" class="hidden w-full lg:w-auto justify-start lg:justify-center p-2 lg:px-3.5 lg:py-2 rounded-xl bg-emerald-900/60 border border-emerald-700/60 hover:bg-emerald-800 text-slate-200 text-xs font-semibold flex items-center gap-2 transition shadow-sm" aria-label="Install HomeStock">
+                        <i class="ph ph-download-simple text-emerald-300 text-base"></i> <span>Install</span>
+                    </button>
+                    <button id="enableNotificationsButton" type="button" onclick="enableBrowserNotifications()" class="w-full lg:w-auto justify-start lg:justify-center p-2 lg:px-3.5 lg:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-2 transition shadow-sm" aria-label="Enable browser notifications">
+                        <i class="ph ph-bell text-indigo-300 text-base"></i> <span>Enable alerts</span>
+                    </button>
+                    <button id="inviteHouseholdButton" type="button" onclick="createHouseholdInvite()" class="hidden w-full lg:w-auto justify-start lg:justify-center p-2 lg:px-3.5 lg:py-2 rounded-xl bg-indigo-900/60 border border-indigo-700/60 hover:bg-indigo-800 text-slate-200 text-xs font-semibold items-center gap-2 transition shadow-sm" aria-label="Invite household members">
+                        <i class="ph ph-user-plus text-base"></i> <span>Invite</span>
+                    </button>
+                    <button id="logoutButton" type="button" onclick="handleLogout()" class="hidden w-full lg:w-auto justify-start lg:justify-center p-2 lg:px-3.5 lg:py-2 rounded-xl bg-slate-900/90 border border-slate-700/60 hover:bg-red-950/70 hover:border-red-800 text-slate-200 text-xs font-semibold items-center gap-2 transition shadow-sm" aria-label="Log out">
+                        <i class="ph ph-sign-out text-base"></i> <span>Log out</span>
+                    </button>
+                </div>
             </div>
         </div>
     </header>

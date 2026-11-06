@@ -30,6 +30,16 @@ let householdNotesInitialized = false;
 let householdNotesDirty = false;
 let householdNotesRevision = 0;
 
+function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[character]);
+}
+
 // --- AUTHENTICATION & INITIALIZATION ---
 async function checkUserAuth() {
     try {
@@ -76,6 +86,42 @@ function setMainHeaderAuthControls(visible) {
     }
     updateBrowserNotificationsButton();
 }
+
+function setHeaderMenuOpen(open) {
+    const menu = document.getElementById('headerActionsMenu');
+    const toggle = document.getElementById('headerMenuToggle');
+    if (!menu || !toggle) return;
+
+    const isOpen = open && !window.matchMedia('(min-width: 1024px)').matches;
+    menu.classList.toggle('hidden', !isOpen);
+    menu.classList.toggle('flex', isOpen);
+    toggle.setAttribute('aria-expanded', String(isOpen));
+    toggle.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
+    toggle.querySelector('i')?.classList.toggle('ph-list', !isOpen);
+    toggle.querySelector('i')?.classList.toggle('ph-x', isOpen);
+}
+
+function toggleHeaderMenu() {
+    const menu = document.getElementById('headerActionsMenu');
+    setHeaderMenuOpen(!!menu?.classList.contains('hidden'));
+}
+
+document.addEventListener('click', event => {
+    const menu = document.getElementById('headerActionsMenu');
+    const toggle = document.getElementById('headerMenuToggle');
+    if (!menu || !toggle) return;
+
+    const target = event.target;
+    if (target instanceof Element && menu.contains(target) && target.closest('button')) {
+        setHeaderMenuOpen(false);
+    } else if (target instanceof Node && !menu.contains(target) && !toggle.contains(target)) {
+        setHeaderMenuOpen(false);
+    }
+});
+
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') setHeaderMenuOpen(false);
+});
 
 function updateBrowserNotificationsButton() {
     const button = document.getElementById('enableNotificationsButton');
@@ -322,6 +368,7 @@ function maybeStartFirstLoginTour(userId) {
 }
 
 function startAppTour(restart = false) {
+    setHeaderMenuOpen(false);
     if (!appTourUserId && currentHouseholdId) {
         supabaseClient.auth.getUser().then(({ data, error }) => {
             if (error) {
@@ -376,6 +423,10 @@ function showAppTourStep(index) {
         return;
     }
 
+    if (document.getElementById('headerActionsMenu')?.contains(target)) {
+        setHeaderMenuOpen(true);
+    }
+
     appTourCurrentTarget = target;
     target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
     target.classList.add('app-tour-highlight');
@@ -409,6 +460,7 @@ function skipAppTour() {
 }
 
 function finishAppTour() {
+    setHeaderMenuOpen(false);
     document.getElementById('appTourOverlay')?.classList.add('hidden');
     document.removeEventListener('keydown', handleAppTourKeydown);
     if (appTourCurrentTarget) {
@@ -707,7 +759,9 @@ function setSyncStatus(text, state) {
             ? 'bg-red-400'
             : 'bg-amber-400 animate-pulse';
     status.className = `text-[10px] sm:text-[11px] ${colorClass} font-medium flex items-center gap-1.5 mt-0.5`;
-    status.innerHTML = `<span class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${dotClass}"></span> ${text}`;
+    const dot = document.createElement('span');
+    dot.className = `w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${dotClass}`;
+    status.replaceChildren(dot, document.createTextNode(` ${text}`));
 }
 
 function handleConnectionRestored() {
@@ -944,12 +998,14 @@ function renderShopping() {
         const div = document.createElement('div');
         div.className = "bg-slate-950/80 backdrop-blur-sm border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3";
         div.innerHTML = `
-            <div onclick="openReceipt('${trip.id}')" class="flex-1 cursor-pointer overflow-hidden">
-                <div class="flex justify-between items-center"><span class="text-xs font-bold text-white">${dateStr}</span><span class="text-xs font-bold text-emerald-400">€${trip.total_amount.toFixed(2)}</span></div>
-                <p class="text-[11px] text-slate-400 truncate mt-0.5">${(trip.items || []).join(', ')}</p>
+            <div class="trip-receipt-button flex-1 cursor-pointer overflow-hidden">
+                <div class="flex justify-between items-center"><span class="text-xs font-bold text-white">${escapeHTML(dateStr)}</span><span class="text-xs font-bold text-emerald-400">€${trip.total_amount.toFixed(2)}</span></div>
+                <p class="text-[11px] text-slate-400 truncate mt-0.5">${escapeHTML((trip.items || []).join(', '))}</p>
             </div>
-            <button onclick="deleteTripPrompt('${trip.id}')" class="text-slate-500 hover:text-red-400 p-2"><i class="ph ph-trash text-sm"></i></button>
+            <button type="button" class="delete-trip-button text-slate-500 hover:text-red-400 p-2"><i class="ph ph-trash text-sm"></i></button>
         `;
+        div.querySelector('.trip-receipt-button').addEventListener('click', () => openReceipt(trip.id));
+        div.querySelector('.delete-trip-button').addEventListener('click', () => deleteTripPrompt(trip.id));
         tripHistoryContainer.appendChild(div);
     });
 }
@@ -959,31 +1015,35 @@ function createShoppingCard(item) {
     div.className = "glass-panel rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-sm hover:border-slate-600 transition";
     const lineThrough = item.is_bought ? 'line-through text-slate-500' : 'text-white';
     
-    const iconHtml = item.is_bought 
-        ? `<button onclick="toggleBought('${item.id}', true)" title="Uncheck" class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center hover:scale-110 transition shrink-0"><i class="ph ph-check text-xs font-bold"></i></button>`
-        : `<button onclick="toggleBought('${item.id}', false)" title="Mark Bought" class="w-6 h-6 rounded-full bg-slate-800/80 text-slate-500 border border-slate-700 flex items-center justify-center hover:border-emerald-500 hover:text-emerald-400 hover:scale-110 transition shrink-0"><i class="ph ph-circle text-xs"></i></button>`;
+    const iconHtml = item.is_bought
+        ? `<button type="button" class="toggle-bought-button w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center hover:scale-110 transition shrink-0" title="Uncheck"><i class="ph ph-check text-xs font-bold"></i></button>`
+        : `<button type="button" class="toggle-bought-button w-6 h-6 rounded-full bg-slate-800/80 text-slate-500 border border-slate-700 flex items-center justify-center hover:border-emerald-500 hover:text-emerald-400 hover:scale-110 transition shrink-0" title="Mark Bought"><i class="ph ph-circle text-xs"></i></button>`;
 
     const priceStr = item.price ? `• €${(item.price * item.quantity).toFixed(2)}` : '';
 
     div.innerHTML = `
         <div class="flex items-center gap-3 flex-1 select-none">
             ${iconHtml}
-            <div class="overflow-hidden flex-1 cursor-pointer" onclick="openEditModal('${item.id}', 'shopping_list')">
+            <div class="edit-shopping-button overflow-hidden flex-1 cursor-pointer">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <h4 class="text-xs font-semibold truncate ${lineThrough}">${item.name}</h4>
+                    <h4 class="text-xs font-semibold truncate ${lineThrough}">${escapeHTML(item.name)}</h4>
                 </div>
-                <p class="text-[11px] text-slate-400 flex gap-1.5 mt-0.5"><span>Qty: ${item.quantity}</span><span>•</span><span>${item.category}</span><span>${priceStr}</span></p>
+                <p class="text-[11px] text-slate-400 flex gap-1.5 mt-0.5"><span>Qty: ${escapeHTML(item.quantity)}</span><span>•</span><span>${escapeHTML(item.category)}</span><span>${escapeHTML(priceStr)}</span></p>
             </div>
         </div>
         <div class="flex items-center gap-1.5">
-            <button onclick="moveToPantryFromShopping('${item.id}')" title="Move to Pantry" class="bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white text-xs px-2.5 py-1.5 rounded-xl font-medium transition flex items-center gap-1">
+            <button type="button" class="move-to-pantry-button bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white text-xs px-2.5 py-1.5 rounded-xl font-medium transition flex items-center gap-1" title="Move to Pantry">
                 <i class="ph ph-archive-box text-sm"></i> <span class="hidden sm:inline">Pantry</span>
             </button>
-            <button onclick="deleteShoppingItem('${item.id}')" title="Delete Item" class="bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white p-1.5 rounded-xl transition">
+            <button type="button" class="delete-shopping-button bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white p-1.5 rounded-xl transition" title="Delete Item">
                 <i class="ph ph-trash text-sm"></i>
             </button>
         </div>
     `;
+    div.querySelector('.toggle-bought-button').addEventListener('click', () => toggleBought(item.id, item.is_bought));
+    div.querySelector('.edit-shopping-button').addEventListener('click', () => openEditModal(item.id, 'shopping_list'));
+    div.querySelector('.move-to-pantry-button').addEventListener('click', () => moveToPantryFromShopping(item.id));
+    div.querySelector('.delete-shopping-button').addEventListener('click', () => deleteShoppingItem(item.id));
     return div;
 }
 
@@ -1047,13 +1107,14 @@ function renderPantry() {
         sectionEl.className = "glass-panel rounded-2xl p-3.5 space-y-2.5";
         
         sectionEl.innerHTML = `
-            <button onclick="toggleCategory('${categoryName}')" class="w-full flex justify-between items-center text-left">
+            <button type="button" class="w-full flex justify-between items-center text-left">
                 <span class="text-xs font-bold text-indigo-400 uppercase tracking-wide flex items-center gap-2">
-                    ${categoryName} <span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">${itemsList.length}</span>
+                    ${escapeHTML(categoryName)} <span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">${itemsList.length}</span>
                 </span>
                 <i class="ph ph-caret-down text-slate-400 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}"></i>
             </button>
         `;
+        sectionEl.querySelector('button').addEventListener('click', () => toggleCategory(categoryName));
 
         const listWrapper = document.createElement('div');
         listWrapper.className = `space-y-2 pt-1 ${isCollapsed ? 'hidden' : ''}`;
@@ -1077,22 +1138,24 @@ function renderPantry() {
             const div = document.createElement('div');
             div.className = "bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3 shadow-sm hover:border-slate-700 transition cursor-pointer";
             div.innerHTML = `
-                <div class="space-y-1 flex-1" onclick="openEditModal('${item.id}', 'items')">
+                <div class="edit-pantry-button space-y-1 flex-1">
                     <div class="flex items-center gap-2 flex-wrap">
-                        <h5 class="text-xs font-semibold text-white">${item.name}</h5>
+                        <h5 class="text-xs font-semibold text-white">${escapeHTML(item.name)}</h5>
                         ${expiryBadge}
                     </div>
-                    <p class="text-[11px] text-slate-400">Quantity: ${item.quantity}</p>
+                    <p class="text-[11px] text-slate-400">Quantity: ${escapeHTML(item.quantity)}</p>
                 </div>
-                <div class="flex items-center gap-1.5 shrink-0" onclick="event.stopPropagation()">
-                    <button id="use-btn-${item.id}" title="Use Up" class="bg-amber-600/15 hover:bg-amber-600 text-amber-400 hover:text-white px-2 py-1 rounded-lg text-xs font-medium transition flex items-center gap-1">
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <button type="button" class="use-pantry-button bg-amber-600/15 hover:bg-amber-600 text-amber-400 hover:text-white px-2 py-1 rounded-lg text-xs font-medium transition flex items-center gap-1" title="Use Up">
                         <i class="ph ph-minus text-xs"></i> <span>Use</span>
                     </button>
-                    <button onclick="deletePantryItem('${item.id}')" title="Delete Item" class="text-slate-400 hover:text-red-400 p-1.5 transition"><i class="ph ph-trash text-sm"></i></button>
+                    <button type="button" class="delete-pantry-button text-slate-400 hover:text-red-400 p-1.5 transition" title="Delete Item"><i class="ph ph-trash text-sm"></i></button>
                 </div>
             `;
 
-            const useBtn = div.querySelector(`#use-btn-${item.id}`);
+            div.querySelector('.edit-pantry-button').addEventListener('click', () => openEditModal(item.id, 'items'));
+            div.querySelector('.delete-pantry-button').addEventListener('click', () => deletePantryItem(item.id));
+            const useBtn = div.querySelector('.use-pantry-button');
             useBtn.onclick = () => decrementPantryItem(
                 item.id, 
                 item.quantity, 
@@ -1180,17 +1243,17 @@ function renderExpiryRadar() {
         div.innerHTML = `
             <div class="space-y-1 flex-1">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <h5 class="text-xs font-semibold text-white">${item.name}</h5>
+                    <h5 class="text-xs font-semibold text-white">${escapeHTML(item.name)}</h5>
                     <span class="text-[10px] border px-2 py-0.5 rounded-md font-semibold ${badgeClass}">${statusText}</span>
                 </div>
-                <p class="text-[11px] text-slate-400">Qty: ${item.quantity} • ${item.category || 'Pantry'}</p>
+                <p class="text-[11px] text-slate-400">Qty: ${escapeHTML(item.quantity)} • ${escapeHTML(item.category || 'Pantry')}</p>
             </div>
-            <button id="radar-use-${item.id}" class="bg-amber-600/15 hover:bg-amber-600 text-amber-400 hover:text-white px-2.5 py-1.5 rounded-xl text-xs font-medium transition flex items-center gap-1 shrink-0">
+            <button type="button" class="radar-use-button bg-amber-600/15 hover:bg-amber-600 text-amber-400 hover:text-white px-2.5 py-1.5 rounded-xl text-xs font-medium transition flex items-center gap-1 shrink-0">
                 <i class="ph ph-minus text-xs"></i> <span>Use</span>
             </button>
         `;
 
-        const useBtn = div.querySelector(`#radar-use-${item.id}`);
+        const useBtn = div.querySelector('.radar-use-button');
         useBtn.onclick = () => decrementPantryItem(
             item.id, 
             item.quantity, 
@@ -1231,10 +1294,10 @@ function renderFrequentBuys() {
         div.className = "glass-panel rounded-2xl p-3 flex items-center justify-between gap-3 shadow-sm hover:border-slate-600 transition";
         div.innerHTML = `
             <div class="overflow-hidden flex-1">
-                <h5 class="text-xs font-semibold text-white truncate">${name}</h5>
+                <h5 class="text-xs font-semibold text-white truncate">${escapeHTML(name)}</h5>
                 <p class="text-[10px] text-slate-400">Purchased ${count} time${count > 1 ? 's' : ''}</p>
             </div>
-            <button id="add-freq-${encodeURIComponent(name)}" class="bg-blue-600/20 border border-blue-500/40 hover:bg-blue-600 text-blue-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1 shrink-0">
+            <button type="button" class="bg-blue-600/20 border border-blue-500/40 hover:bg-blue-600 text-blue-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1 shrink-0">
                 <i class="ph ph-plus"></i> Add
             </button>
         `;
@@ -1444,6 +1507,8 @@ function switchMobileTab(tab) {
     const navHub = document.getElementById('navBtnHub');
 
     if (!shoppingSec || !pantrySec || !hubSec) return;
+
+    if (window.matchMedia('(min-width: 1024px)').matches) setHeaderMenuOpen(false);
 
     shoppingSec.classList.add('hidden');
     pantrySec.classList.add('hidden');
@@ -1885,7 +1950,7 @@ function openReceipt(tripId) {
         const parts = str.split(' | ');
         const row = document.createElement('div');
         row.className = "flex justify-between items-start text-xs";
-        row.innerHTML = `<div><p class="font-bold text-slate-900">${parts[0]}</p><p class="text-[9px] text-slate-500">${parts[1] || ''}</p></div><span class="font-bold text-slate-900">${parts[2] || ''}</span>`;
+        row.innerHTML = `<div><p class="font-bold text-slate-900">${escapeHTML(parts[0])}</p><p class="text-[9px] text-slate-500">${escapeHTML(parts[1] || '')}</p></div><span class="font-bold text-slate-900">${escapeHTML(parts[2] || '')}</span>`;
         list.appendChild(row);
     });
     document.getElementById('receiptModal').classList.remove('hidden');
