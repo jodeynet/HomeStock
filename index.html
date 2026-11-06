@@ -14,9 +14,18 @@
     <script>
         const recoveryHashParams = new URLSearchParams(window.location.hash.slice(1));
         const recoverySearchParams = new URLSearchParams(window.location.search);
-        if (recoveryHashParams.get('type') === 'recovery' || recoverySearchParams.get('type') === 'recovery') {
+        const passwordRecoveryPending = localStorage.getItem('homestock_password_recovery_pending') === 'true';
+        const hasRecoveryCallback = recoveryHashParams.has('access_token')
+            || recoveryHashParams.has('code')
+            || recoveryHashParams.get('type') === 'recovery'
+            || recoverySearchParams.has('code')
+            || recoverySearchParams.get('type') === 'recovery';
+        if (recoveryHashParams.get('type') === 'recovery'
+            || recoverySearchParams.get('type') === 'recovery'
+            || (passwordRecoveryPending && hasRecoveryCallback)) {
             const recoveryPage = new URL('reset-password.html', window.location.href);
             recoveryPage.search = window.location.search;
+            if (recoverySearchParams.has('code')) recoveryPage.searchParams.set('type', 'recovery');
             recoveryPage.hash = window.location.hash;
             window.location.replace(recoveryPage.href);
         }
@@ -447,6 +456,6 @@
     </div>
 </div>
     <script src="auth.js?v=forgot-password-page"></script>
-    <script src="app.js?v=recovery-callback-routing"></script>
+    <script src="app.js?v=recovery-callback-routing-2"></script>
 </body>
 </html>

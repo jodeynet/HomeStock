@@ -1,5 +1,10 @@
 const recoveryAuth = window.supabaseClient.auth;
 let passwordRecoverySession = null;
+let passwordRecoveryEventResolved = false;
+let resolvePasswordRecoveryEvent;
+const passwordRecoveryEvent = new Promise(resolve => {
+    resolvePasswordRecoveryEvent = resolve;
+});
 
 function setResetPasswordStatus(message, isError = false) {
     const status = document.getElementById('resetPasswordStatus');
@@ -11,6 +16,7 @@ function setResetPasswordStatus(message, isError = false) {
 function showPasswordResetForm(session) {
     if (!session?.user) return;
     passwordRecoverySession = session;
+    localStorage.removeItem('homestock_password_recovery_pending');
     document.getElementById('resetPasswordForm').classList.remove('hidden');
     setResetPasswordStatus('Your reset link is valid. Enter your new password below.');
     document.getElementById('resetNewPassword').focus();
@@ -18,7 +24,11 @@ function showPasswordResetForm(session) {
 }
 
 recoveryAuth.onAuthStateChange((event, session) => {
-    if (event === 'PASSWORD_RECOVERY') showPasswordResetForm(session);
+    if (event === 'PASSWORD_RECOVERY') {
+        passwordRecoveryEventResolved = true;
+        showPasswordResetForm(session);
+        resolvePasswordRecoveryEvent(session);
+    }
 });
 
 async function initializePasswordReset() {
@@ -29,12 +39,28 @@ async function initializePasswordReset() {
         return;
     }
 
-    if (window.HOMESTOCK_PASSWORD_RECOVERY_LINK && data.session) {
-        showPasswordResetForm(data.session);
+    if (window.HOMESTOCK_PASSWORD_RECOVERY_LINK) {
+        if (passwordRecoverySession || data.session) {
+            showPasswordResetForm(passwordRecoverySession || data.session);
+            return;
+        }
+
+        await Promise.race([
+            passwordRecoveryEvent,
+            new Promise(resolve => setTimeout(resolve, 5000))
+        ]);
+        if (passwordRecoverySession) return;
+        if (passwordRecoveryEventResolved) {
+            setResetPasswordStatus('We could not start a secure reset session. Request a new reset link and try again.', true);
+            return;
+        }
+    } else {
+        setResetPasswordStatus('This password reset link is invalid or has expired. Request a new link from the log-in page.', true);
         return;
     }
 
     window.HOMESTOCK_PASSWORD_RECOVERY_LINK = false;
+    localStorage.removeItem('homestock_password_recovery_pending');
     setResetPasswordStatus('This password reset link is invalid or has expired. Request a new link from the log-in page.', true);
 }
 
