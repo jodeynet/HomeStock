@@ -6,6 +6,7 @@ let currentHouseholdRole = null;
 let realtimeChannel = null;
 let realtimeConnected = false;
 let realtimeSetupInProgress = false;
+let householdNotificationPanelOpen = false;
 let dataFetchRequestId = 0;
 let householdRefreshTimeout = null;
 let householdRefreshesInProgress = 0;
@@ -25,6 +26,9 @@ let collapsedCategories = {};
 let currentHubTab = 'expiry';
 let currentMobileTab = null;
 let html5QrCodeScanner = null;
+let receiptOcrRequestId = 0;
+let receiptSaveInProgress = false;
+let newItemBadgeExpiryTimeout = null;
 let householdNotesSaveTimeout = null;
 let householdNotesLoadRequest = 0;
 let householdNotesInitialized = false;
@@ -104,24 +108,157 @@ function setHeaderMenuOpen(open) {
 
 function toggleHeaderMenu() {
     const menu = document.getElementById('headerActionsMenu');
+    toggleHouseholdNotifications(false);
     setHeaderMenuOpen(!!menu?.classList.contains('hidden'));
+}
+
+function setHouseholdNotificationCount(count) {
+    const badge = document.getElementById('householdNotificationCount');
+    const button = document.getElementById('householdNotificationsButton');
+    if (!badge || !button) return;
+
+    const unreadCount = Number.isFinite(count) ? Math.max(0, count) : 0;
+    badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+    badge.classList.toggle('hidden', unreadCount === 0);
+    button.setAttribute('aria-label', unreadCount
+        ? `Notifications, ${unreadCount} unread household ${unreadCount === 1 ? 'change' : 'changes'}`
+        : 'Notifications, no unread household changes');
+}
+
+function setHouseholdNotificationPanelStatus(message, visible = true) {
+    const status = document.getElementById('householdNotificationPanelStatus');
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('hidden', !visible);
+}
+
+function setHouseholdNotificationsPanelOpen(open) {
+    const panel = document.getElementById('householdNotificationsPanel');
+    const button = document.getElementById('householdNotificationsButton');
+    if (!panel || !button) return;
+
+    householdNotificationPanelOpen = open;
+    panel.classList.toggle('hidden', !open);
+    button.setAttribute('aria-expanded', String(open));
+}
+
+async function loadHouseholdNotifications() {
+    const list = document.getElementById('householdNotificationList');
+    const summary = document.getElementById('householdNotificationSummary');
+    if (!list || !summary) return;
+
+    list.replaceChildren();
+    setHouseholdNotificationPanelStatus('Loading household changes…');
+    summary.textContent = 'Changes since your last visit';
+
+    const { data, error } = await supabaseClient.rpc('get_unread_household_notifications');
+    if (error) {
+        console.error('Failed to load household notifications:', error);
+        setHouseholdNotificationPanelStatus(`Notifications are unavailable: ${error.message}`);
+        return;
+    }
+
+    const notifications = data || [];
+    const unreadCount = Number(notifications[0]?.unread_count || 0);
+    const latestNotificationId = notifications[0]?.latest_notification_id;
+    setHouseholdNotificationCount(unreadCount);
+    list.replaceChildren();
+
+    if (notifications.length === 0) {
+        setHouseholdNotificationPanelStatus('No new household changes since you last checked.');
+        return;
+    }
+
+    setHouseholdNotificationPanelStatus('', false);
+    summary.textContent = `${unreadCount} unread ${unreadCount === 1 ? 'change' : 'changes'}`;
+    if (unreadCount > notifications.length) {
+        const olderChanges = document.createElement('p');
+        olderChanges.className = 'px-4 py-2 text-xs text-slate-400';
+        olderChanges.textContent = `Showing the latest ${notifications.length} of ${unreadCount} changes.`;
+        list.append(olderChanges);
+    }
+
+    for (const notification of notifications) {
+        const entry = document.createElement('article');
+        entry.className = 'px-4 py-3';
+        const heading = document.createElement('p');
+        heading.className = 'text-sm font-medium text-slate-100';
+        const labels = {
+            shopping_list: 'Shopping list',
+            items: 'Pantry',
+            shopping_trips: 'Shopping trip',
+            household_notes: 'Household notes'
+        };
+        const action = notification.action === 'INSERT'
+            ? 'added'
+            : notification.action === 'DELETE'
+                ? 'removed'
+                : 'updated';
+        const itemName = notification.item_name && notification.source_table !== 'household_notes'
+            ? `: ${notification.item_name}`
+            : '';
+        heading.textContent = `${notification.actor_name || 'A household member'} ${action} ${labels[notification.source_table] || 'household data'}${itemName}`;
+        const time = document.createElement('time');
+        time.className = 'mt-1 block text-xs text-slate-500';
+        time.dateTime = notification.created_at;
+        time.textContent = new Date(notification.created_at).toLocaleString();
+        entry.append(heading, time);
+        list.append(entry);
+    }
+
+    const { error: readError } = await supabaseClient.rpc('mark_household_notifications_read', {
+        p_last_notification_id: latestNotificationId
+    });
+    if (readError) {
+        console.error('Failed to mark household notifications as read:', readError);
+        setHouseholdNotificationPanelStatus('Changes are shown, but could not be marked as read.');
+        return;
+    }
+    setHouseholdNotificationCount(0);
+    summary.textContent = 'You’re all caught up';
+}
+
+async function refreshHouseholdNotificationCount() {
+    const { data, error } = await supabaseClient.rpc('get_unread_household_notifications');
+    if (error) {
+        console.error('Failed to refresh household notification count:', error);
+        return;
+    }
+    setHouseholdNotificationCount(Number(data?.[0]?.unread_count || 0));
+}
+
+function toggleHouseholdNotifications(forceOpen) {
+    const shouldOpen = typeof forceOpen === 'boolean'
+        ? forceOpen
+        : !householdNotificationPanelOpen;
+    setHeaderMenuOpen(false);
+    setHouseholdNotificationsPanelOpen(shouldOpen);
+    if (shouldOpen) loadHouseholdNotifications();
 }
 
 document.addEventListener('click', event => {
     const menu = document.getElementById('headerActionsMenu');
     const toggle = document.getElementById('headerMenuToggle');
-    if (!menu || !toggle) return;
-
     const target = event.target;
-    if (target instanceof Element && menu.contains(target) && target.closest('button')) {
+    if (menu && toggle && target instanceof Element && menu.contains(target) && target.closest('button')) {
         setHeaderMenuOpen(false);
-    } else if (target instanceof Node && !menu.contains(target) && !toggle.contains(target)) {
+    } else if (menu && toggle && target instanceof Node && !menu.contains(target) && !toggle.contains(target)) {
         setHeaderMenuOpen(false);
+    }
+
+    const notificationPanel = document.getElementById('householdNotificationsPanel');
+    const notificationButton = document.getElementById('householdNotificationsButton');
+    if (notificationPanel && notificationButton && target instanceof Node
+        && !notificationPanel.contains(target) && !notificationButton.contains(target)) {
+        setHouseholdNotificationsPanelOpen(false);
     }
 });
 
 document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') setHeaderMenuOpen(false);
+    if (event.key === 'Escape') {
+        setHeaderMenuOpen(false);
+        setHouseholdNotificationsPanelOpen(false);
+    }
 });
 
 function updateBrowserNotificationsButton() {
@@ -197,6 +334,7 @@ function notifyHouseholdChange(table, eventType, payload) {
         : `${label}${rowName ? `: ${String(rowName).slice(0, 60)}` : ''} ${action}`;
 
     showHouseholdNotification(message);
+    void refreshHouseholdNotificationCount();
     if (document.visibilityState === 'hidden' && 'Notification' in window && Notification.permission === 'granted') {
         try {
             new Notification('HomeStock household update', { body: message, icon: 'icon.png' });
@@ -243,6 +381,7 @@ async function fetchUserHouseholdId(userId) {
         document.addEventListener('visibilitychange', handleVisibilityChange);
         await fetchAllData();
         await setupRealtimeSubscriptions();
+        await refreshHouseholdNotificationCount();
         await loadHouseholdNotes();
         maybeStartFirstLoginTour(userId);
         return true;
@@ -888,6 +1027,9 @@ function handleVisibilityChange() {
 }
 
 function handleHouseholdTableDelete(table, payload) {
+    if (payload.old?.household_id === currentHouseholdId) {
+        void refreshHouseholdNotificationCount();
+    }
     const deletedId = payload.old?.id ?? payload.old?.household_id;
     if (!deletedId) return;
 
@@ -996,6 +1138,38 @@ function renderLandscape() {
     renderSmartHub();
     renderExpiryHeaderBadge();
     handleResponsiveLayout();
+    scheduleNewItemBadgeExpiry();
+}
+
+function isNewlyAddedItem(item, now = Date.now()) {
+    const createdAt = Date.parse(item.created_at);
+    const age = now - createdAt;
+    return Number.isFinite(createdAt) && age >= 0 && age < 24 * 60 * 60 * 1000;
+}
+
+function getNewItemBadge(item) {
+    return isNewlyAddedItem(item)
+        ? '<span title="Added in the last 24 hours" class="shrink-0 rounded-md border border-emerald-400/30 bg-emerald-400/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">New</span>'
+        : '';
+}
+
+function scheduleNewItemBadgeExpiry() {
+    if (newItemBadgeExpiryTimeout) {
+        clearTimeout(newItemBadgeExpiryTimeout);
+        newItemBadgeExpiryTimeout = null;
+    }
+
+    const nextExpiry = [...items, ...pantryItems]
+        .map(item => Date.parse(item.created_at) + 24 * 60 * 60 * 1000)
+        .filter(expiry => Number.isFinite(expiry) && expiry > Date.now())
+        .sort((a, b) => a - b)[0];
+
+    if (nextExpiry) {
+        newItemBadgeExpiryTimeout = setTimeout(
+            renderLandscape,
+            Math.max(0, nextExpiry - Date.now() + 10)
+        );
+    }
 }
 
 function renderTimeGreeting() {
@@ -1139,6 +1313,7 @@ function createShoppingCard(item) {
             <div class="edit-shopping-button overflow-hidden flex-1 cursor-pointer">
                 <div class="flex items-center gap-2 flex-wrap">
                     <h4 class="text-xs font-semibold truncate ${lineThrough}">${escapeHTML(item.name)}</h4>
+                    ${getNewItemBadge(item)}
                 </div>
                 <p class="text-[11px] text-slate-400 flex gap-1.5 mt-0.5"><span>Qty: ${escapeHTML(item.quantity)}</span><span>•</span><span>${escapeHTML(item.category)}</span><span>${escapeHTML(priceStr)}</span></p>
             </div>
@@ -1245,6 +1420,8 @@ function renderPantry() {
                     const formattedDate = expiryDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                     expiryBadge = `<span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-md">Exp: ${formattedDate}</span>`;
                 }
+            } else {
+                expiryBadge = '<span class="text-[10px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-md font-semibold">No expiration</span>';
             }
 
             const div = document.createElement('div');
@@ -1253,6 +1430,7 @@ function renderPantry() {
                 <div class="edit-pantry-button space-y-1 flex-1">
                     <div class="flex items-center gap-2 flex-wrap">
                         <h5 class="text-xs font-semibold text-white">${escapeHTML(item.name)}</h5>
+                        ${getNewItemBadge(item)}
                         ${expiryBadge}
                     </div>
                     <p class="text-[11px] text-slate-400">Quantity: ${escapeHTML(item.quantity)}</p>
@@ -2087,6 +2265,256 @@ function openReceipt(tripId) {
 }
 
 function closeReceiptModal() { document.getElementById('receiptModal').classList.add('hidden'); }
+
+function openReceiptScan() {
+    receiptOcrRequestId++;
+    const chooseButton = document.getElementById('receiptChooseImageButton');
+    chooseButton.disabled = false;
+    chooseButton.classList.remove('opacity-50');
+    document.getElementById('receiptSaveButton').disabled = false;
+    document.getElementById('receiptSaveButton').textContent = 'Add to inventory';
+    document.getElementById('receiptImageInput').value = '';
+    document.getElementById('receiptReviewRows').replaceChildren();
+    document.getElementById('receiptReviewSection').classList.add('hidden');
+    setReceiptScanStatus('', false);
+    const modal = document.getElementById('receiptScanModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeReceiptScan() {
+    receiptOcrRequestId++;
+    const modal = document.getElementById('receiptScanModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    document.getElementById('receiptImageInput').value = '';
+}
+
+function setReceiptScanStatus(message, visible = true) {
+    const status = document.getElementById('receiptScanStatus');
+    status.textContent = message;
+    status.classList.toggle('hidden', !visible);
+}
+
+function parseReceiptText(text) {
+    const ignoredLine = /\b(total|subtotal|tax|vat|cash|change|card|debit|credit|balance|savings|discount|thank you)\b/i;
+    const result = [];
+
+    for (const rawLine of text.split(/\r?\n/)) {
+        const line = rawLine.replace(/\s+/g, ' ').trim();
+        if (!line || ignoredLine.test(line)) continue;
+
+        const match = line.match(/^(?:(\d+(?:[.,]\d+)?)\s*(?:x|@)\s*)?(.+?)\s+(?:€\s*)?(\d{1,5}[.,]\d{2})\s*(?:€|EUR)?$/i);
+        if (!match) continue;
+
+        const quantity = match[1] ? Math.max(1, Math.round(Number(match[1].replace(',', '.')))) : 1;
+        const lineAmount = Number(match[3].replace(',', '.'));
+        const name = match[2].replace(/^[\s*#-]+|[\s*#-]+$/g, '').trim();
+        if (!name || !Number.isFinite(lineAmount) || lineAmount < 0) continue;
+
+        result.push({
+            name,
+            quantity,
+            price: quantity > 0 ? (lineAmount / quantity).toFixed(2) : lineAmount.toFixed(2)
+        });
+    }
+
+    return result;
+}
+
+async function processReceiptImage(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+        setReceiptScanStatus('Choose an image file to scan.');
+        return;
+    }
+    if (!window.Tesseract?.createWorker) {
+        setReceiptScanStatus('Receipt text recognition could not load. Check your internet connection and try again.');
+        return;
+    }
+
+    const requestId = ++receiptOcrRequestId;
+    const chooseButton = document.getElementById('receiptChooseImageButton');
+    chooseButton.disabled = true;
+    chooseButton.classList.add('opacity-50');
+    setReceiptScanStatus('Preparing receipt scan…');
+    let worker;
+
+    try {
+        worker = await Tesseract.createWorker('eng', 1, {
+            logger: progress => {
+                if (requestId !== receiptOcrRequestId || !progress.status) return;
+                const percent = Number.isFinite(progress.progress)
+                    ? ` ${Math.round(progress.progress * 100)}%`
+                    : '';
+                setReceiptScanStatus(`Reading receipt: ${progress.status}${percent}`);
+            }
+        });
+        if (requestId !== receiptOcrRequestId) return;
+        const { data } = await worker.recognize(file);
+        if (requestId !== receiptOcrRequestId) return;
+
+        const detectedItems = parseReceiptText(data.text || '');
+        if (!detectedItems.length) {
+            setReceiptScanStatus('No item lines were detected. Try a clearer, well-lit photo, or add the items manually.');
+            return;
+        }
+
+        const rows = document.getElementById('receiptReviewRows');
+        rows.replaceChildren();
+        for (const item of detectedItems) addReceiptReviewRow(item);
+        document.getElementById('receiptReviewSection').classList.remove('hidden');
+        setReceiptScanStatus(`Found ${detectedItems.length} possible ${detectedItems.length === 1 ? 'item' : 'items'}. Review them before saving.`);
+    } catch (error) {
+        if (requestId === receiptOcrRequestId) {
+            console.error('Receipt text recognition failed:', error);
+            setReceiptScanStatus('Could not read this receipt image. Try another photo.');
+        }
+    } finally {
+        if (worker) {
+            try {
+                await worker.terminate();
+            } catch (error) {
+                console.error('Failed to stop receipt text recognition:', error);
+            }
+        }
+        if (requestId === receiptOcrRequestId) {
+            chooseButton.disabled = false;
+            chooseButton.classList.remove('opacity-50');
+        }
+    }
+}
+
+function addReceiptReviewRow(item = { name: '', quantity: 1, price: '' }) {
+    const row = document.createElement('div');
+    row.className = 'grid grid-cols-[minmax(0,1fr)_4rem_5.5rem_auto] items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-950/60 p-2';
+
+    const name = document.createElement('input');
+    name.type = 'text';
+    name.value = item.name || '';
+    name.maxLength = 120;
+    name.placeholder = 'Item name';
+    name.setAttribute('aria-label', 'Item name');
+    name.className = 'min-w-0 rounded-lg border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white';
+
+    const quantity = document.createElement('input');
+    quantity.type = 'number';
+    quantity.min = '1';
+    quantity.max = '999';
+    quantity.step = '1';
+    quantity.value = String(item.quantity || 1);
+    quantity.setAttribute('aria-label', 'Quantity');
+    quantity.className = 'w-full rounded-lg border border-slate-700 bg-slate-900 px-1 py-2 text-center text-xs text-white';
+
+    const price = document.createElement('input');
+    price.type = 'number';
+    price.min = '0';
+    price.step = '0.01';
+    price.value = item.price ?? '';
+    price.placeholder = '€ each';
+    price.setAttribute('aria-label', 'Unit price in euros');
+    price.className = 'w-full rounded-lg border border-slate-700 bg-slate-900 px-1 py-2 text-right text-xs text-white';
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', 'Remove item');
+    remove.className = 'rounded-lg px-2 py-1 text-lg text-slate-400 hover:bg-slate-800 hover:text-white';
+    remove.addEventListener('click', () => {
+        row.remove();
+        updateReceiptReviewTotal();
+    });
+
+    for (const input of [quantity, price]) {
+        input.addEventListener('input', updateReceiptReviewTotal);
+    }
+    row.append(name, quantity, price, remove);
+    document.getElementById('receiptReviewRows').append(row);
+    updateReceiptReviewTotal();
+}
+
+function updateReceiptReviewTotal() {
+    const rows = [...document.querySelectorAll('#receiptReviewRows > div')];
+    const total = rows.reduce((sum, row) => {
+        const quantity = Number(row.children[1].value);
+        const price = Number(row.children[2].value);
+        return sum + (Number.isFinite(quantity) && Number.isFinite(price) ? quantity * price : 0);
+    }, 0);
+    document.getElementById('receiptReviewTotal').textContent = `€${total.toFixed(2)}`;
+}
+
+async function saveReceiptItems() {
+    if (!currentHouseholdId) {
+        console.error('Cannot save receipt items: currentHouseholdId has not been resolved.');
+        setReceiptScanStatus('Your household could not be verified. Refresh the page and try again.');
+        return;
+    }
+    if (receiptSaveInProgress) return;
+
+    const receiptItems = [...document.querySelectorAll('#receiptReviewRows > div')].map(row => ({
+        name: row.children[0].value.trim(),
+        quantity: Number(row.children[1].value),
+        price: row.children[2].value === '' ? null : Number(row.children[2].value)
+    }));
+    if (!receiptItems.length || receiptItems.some(item => !item.name
+        || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 999
+        || (item.price !== null && (!Number.isFinite(item.price) || item.price < 0)))) {
+        setReceiptScanStatus('Check that each item has a name, a whole-number quantity, and a valid non-negative price.');
+        return;
+    }
+
+    receiptSaveInProgress = true;
+    const saveButton = document.getElementById('receiptSaveButton');
+    saveButton.disabled = true;
+    saveButton.textContent = 'Adding items…';
+
+    const total = receiptItems.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+    const pantryRows = receiptItems.map(item => ({
+        household_id: currentHouseholdId,
+        name: item.name,
+        quantity: item.quantity,
+        category: 'Pantry',
+        price: item.price,
+        expiry_date: null
+    }));
+    const tripItems = receiptItems.map(item =>
+        `${item.name} | Qty: ${item.quantity} | ${item.price === null ? 'Price not captured' : `€${(item.price * item.quantity).toFixed(2)} total`}`
+    );
+
+    try {
+        const { error: pantryError } = await supabaseClient.from('items').insert(pantryRows);
+        if (pantryError) {
+            console.error('Failed to add receipt items to pantry:', pantryError);
+            setReceiptScanStatus(`Could not add items to inventory: ${pantryError.message}`);
+            return;
+        }
+
+        const { error: tripError } = await supabaseClient.from('shopping_trips').insert({
+            household_id: currentHouseholdId,
+            total_amount: total,
+            items: tripItems
+        });
+        if (tripError) {
+            console.error('Receipt items were added, but shopping trip history could not be saved:', tripError);
+            closeReceiptScan();
+            alert(`Items were added to inventory, but trip history could not be saved: ${tripError.message}`);
+            await fetchAllData();
+            return;
+        }
+
+        closeReceiptScan();
+        await fetchAllData();
+    } catch (error) {
+        console.error('Unexpected error while saving receipt items:', error);
+        setReceiptScanStatus('An unexpected error occurred while saving. Check your inventory before trying again.');
+    } finally {
+        receiptSaveInProgress = false;
+        saveButton.disabled = false;
+        saveButton.textContent = 'Add to inventory';
+    }
+}
+
 function openWhatsNew() { document.getElementById('whatsNewModal').classList.remove('hidden'); }
 function closeWhatsNew() { document.getElementById('whatsNewModal').classList.add('hidden'); }
 
