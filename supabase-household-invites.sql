@@ -1,5 +1,6 @@
 -- Run this once in the Supabase SQL Editor for the HomeStock project.
 -- Invite codes expire after 7 days and can be used by up to 10 new members.
+-- New codes are 8 hexadecimal characters; existing longer codes remain valid.
 
 create table if not exists public.household_invites (
     id uuid primary key default pg_catalog.gen_random_uuid(),
@@ -23,7 +24,8 @@ set search_path = ''
 as $$
 declare
     v_household_id uuid;
-    v_invite_code text := pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', '');
+    v_invite_code text;
+    v_inserted_count integer;
 begin
     if auth.uid() is null then
         raise exception 'You must be signed in to create a household invite.';
@@ -39,10 +41,24 @@ begin
         raise exception 'Your account is not assigned to a household.';
     end if;
 
-    return query
-    insert into public.household_invites as hi (household_id, invite_code, created_by)
-    values (v_household_id, v_invite_code, auth.uid())
-    returning hi.invite_code, hi.expires_at;
+    loop
+        v_invite_code := pg_catalog.substr(
+            pg_catalog.replace(pg_catalog.gen_random_uuid()::text, '-', ''),
+            1,
+            8
+        );
+
+        return query
+        insert into public.household_invites as hi (household_id, invite_code, created_by)
+        values (v_household_id, v_invite_code, auth.uid())
+        on conflict do nothing
+        returning hi.invite_code, hi.expires_at;
+
+        get diagnostics v_inserted_count = row_count;
+        if v_inserted_count > 0 then
+            return;
+        end if;
+    end loop;
 end;
 $$;
 
@@ -63,8 +79,8 @@ begin
     if v_user_id is null then
         raise exception 'You must be signed in to join a household.';
     end if;
-    if p_invite_code is null or pg_catalog.btrim(p_invite_code) = '' then
-        raise exception 'Enter a household invite code.';
+    if p_invite_code is null or pg_catalog.char_length(pg_catalog.btrim(p_invite_code)) < 5 then
+        raise exception 'Enter a household invite code with at least 5 characters.';
     end if;
 
     select hi.id, hi.household_id, hi.max_uses, hi.use_count

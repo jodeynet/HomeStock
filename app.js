@@ -516,6 +516,10 @@ async function handleLogin() {
 
     try {
         const inviteCode = document.getElementById('householdInviteCode').value.trim();
+        if (inviteCode && inviteCode.length < 5) {
+            alert("Household invite codes must be at least 5 characters.");
+            return;
+        }
         if (inviteCode) localStorage.setItem(PENDING_HOUSEHOLD_INVITE_KEY, inviteCode);
         const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
         if (error) {
@@ -537,6 +541,10 @@ async function handleSignUp() {
 
     if (!email || !password || !inviteCode) {
         alert("Please enter your email, password, and a household invite code to sign up.");
+        return;
+    }
+    if (inviteCode.length < 5) {
+        alert("Household invite codes must be at least 5 characters.");
         return;
     }
 
@@ -587,6 +595,10 @@ async function joinHouseholdWithCode() {
     const inviteCode = document.getElementById('householdInviteCode').value.trim();
     if (!inviteCode) {
         alert("Enter a household invite code first.");
+        return;
+    }
+    if (inviteCode.length < 5) {
+        alert("Household invite codes must be at least 5 characters.");
         return;
     }
 

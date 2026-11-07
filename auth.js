@@ -72,6 +72,10 @@ async function handleLogin() {
         setAuthStatus("Enter your email and password.", true);
         return;
     }
+    if (inviteCode && inviteCode.length < 5) {
+        setAuthStatus("Household invite codes must be at least 5 characters.", true);
+        return;
+    }
 
     try {
         const { data, error } = await authClient.auth.signInWithPassword({ email, password });
@@ -135,6 +139,10 @@ async function handleSignUp() {
     }
     if (householdMode === 'join' && !inviteCode) {
         setAuthStatus("Enter a household invite code.", true);
+        return;
+    }
+    if (householdMode === 'join' && inviteCode.length < 5) {
+        setAuthStatus("Household invite codes must be at least 5 characters.", true);
         return;
     }
     if (householdMode === 'create' && (!householdName || householdName.length > 60)) {
@@ -257,6 +265,11 @@ async function joinHouseholdWithCode() {
     const inviteCode = document.getElementById('householdInviteCode').value.trim();
     if (!inviteCode) {
         setAuthStatus("Enter a household invite code first.", true);
+        document.getElementById('householdInviteCode').focus();
+        return;
+    }
+    if (inviteCode.length < 5) {
+        setAuthStatus("Household invite codes must be at least 5 characters.", true);
         document.getElementById('householdInviteCode').focus();
         return;
     }
@@ -479,12 +492,22 @@ async function copyHouseholdInviteLink() {
     if (!code) return;
     const inviteUrl = new URL('signup.html', window.location.href);
     inviteUrl.searchParams.set('invite', code);
+    const invitation = [
+        "You are invited to join our household on HomeStock, our shared platform for coordinating household shopping and pantry inventory.",
+        "",
+        "To accept this invitation, please use the link below and create or sign in to your HomeStock account. You may also be asked to enter the invitation code.",
+        "",
+        `Invitation code: ${code}`,
+        `Invitation link: ${inviteUrl.href}`,
+        "",
+        "We look forward to having you join us."
+    ].join('\n');
     try {
-        await navigator.clipboard.writeText(inviteUrl.href);
-        alert("Invite link copied! Send it to someone you'd like to welcome into your household.");
+        await navigator.clipboard.writeText(invitation);
+        alert("Invitation message copied. You can now share it with your household member.");
     } catch (error) {
         console.error("Clipboard copy failed:", error);
-        window.prompt("Share this invite link with someone you'd like to welcome into your household:", inviteUrl.href);
+        window.prompt("Copy and share this household invitation:", invitation);
     }
 }
 
