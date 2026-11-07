@@ -93,7 +93,7 @@ function setHeaderMenuOpen(open) {
     const toggle = document.getElementById('headerMenuToggle');
     if (!menu || !toggle) return;
 
-    const isOpen = open && !window.matchMedia('(min-width: 1024px)').matches;
+    const isOpen = open;
     menu.classList.toggle('hidden', !isOpen);
     menu.classList.toggle('flex', isOpen);
     toggle.setAttribute('aria-expanded', String(isOpen));
@@ -1029,7 +1029,7 @@ function renderExpiryHeaderBadge() {
     }
 
     container.innerHTML = `
-        <button onclick="toggleExpiryAlertFilter()" class="px-3 py-2 rounded-xl bg-slate-900/90 border ${expiryAlertFilterActive ? 'border-amber-500 bg-amber-500/10' : 'border-slate-700/60 hover:bg-slate-800'} text-xs font-semibold flex items-center gap-2 transition shadow-sm">
+        <button onclick="toggleExpiryAlertFilter()" class="flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-semibold shadow-sm transition ${expiryAlertFilterActive ? 'border-amber-500 bg-amber-500/10' : 'border-slate-700/60 bg-slate-900/90 hover:bg-slate-800'}">
             <i class="ph ph-warning text-amber-400 text-base animate-pulse"></i>
             <span>Expiring: <strong class="text-red-400">${expiredCount}</strong> / <strong class="text-amber-400">${expiringSoonCount}</strong></span>
         </button>
@@ -1608,7 +1608,7 @@ function switchMobileTab(tab) {
 
     if (!shoppingSec || !pantrySec || !hubSec) return;
 
-    if (window.matchMedia('(min-width: 1024px)').matches) setHeaderMenuOpen(false);
+    setHeaderMenuOpen(false);
 
     shoppingSec.classList.add('hidden');
     pantrySec.classList.add('hidden');
