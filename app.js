@@ -1522,8 +1522,26 @@ function toggleBarcodeScanner() {
 function startBarcodeScanner() {
     if (html5QrCodeScanner) return;
 
-    html5QrCodeScanner = new Html5Qrcode("reader");
-    const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+    html5QrCodeScanner = new Html5Qrcode("reader", {
+        formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.ITF
+        ],
+        verbose: false
+    });
+    const config = {
+        fps: 15,
+        qrbox: (viewfinderWidth, viewfinderHeight) => ({
+            width: Math.floor(Math.min(viewfinderWidth * 0.9, 420)),
+            height: Math.floor(Math.min(viewfinderHeight, Math.max(viewfinderHeight * 0.5, 140), 200))
+        }),
+        experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+    };
 
     html5QrCodeScanner.start(
         { facingMode: "environment" }, 
