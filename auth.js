@@ -80,6 +80,23 @@ async function handleLogin() {
             setAuthStatus(error.message, true);
             return;
         }
+        const { data: membership, error: membershipError } = await authClient
+            .from('household_members')
+            .select('household_id')
+            .eq('user_id', data.user.id)
+            .maybeSingle();
+        if (membershipError) {
+            console.error("Failed to check household membership after login:", membershipError);
+            setAuthStatus(`Couldn't check your household: ${membershipError.message}`, true);
+            return;
+        }
+        if (membership?.household_id) {
+            localStorage.removeItem(pendingHouseholdNameKey);
+            if (inviteCode) localStorage.setItem(pendingInviteKey, inviteCode);
+            window.location.assign('index.html');
+            return;
+        }
+
         const householdName = localStorage.getItem(pendingHouseholdNameKey)
             || (data.user?.user_metadata?.household_setup_mode === 'create'
                 ? data.user.user_metadata.household_name
