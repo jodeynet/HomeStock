@@ -29,6 +29,8 @@ let html5QrCodeScanner = null;
 let receiptOcrRequestId = 0;
 let receiptSaveInProgress = false;
 let newItemBadgeExpiryTimeout = null;
+let restoreTripConfirmationResolver = null;
+let restoreTripConfirmationReturnFocus = null;
 let householdNotesSaveTimeout = null;
 let householdNotesLoadRequest = 0;
 let householdNotesInitialized = false;
@@ -256,6 +258,10 @@ document.addEventListener('click', event => {
 
 document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
+        if (restoreTripConfirmationResolver) {
+            resolveRestoreTripConfirmation(false);
+            return;
+        }
         setHeaderMenuOpen(false);
         setHouseholdNotificationsPanelOpen(false);
     }
@@ -2092,7 +2098,8 @@ async function deleteTripPrompt(tripId) {
         return;
     }
     const trip = pastTrips.find(t => t.id === tripId);
-    if (!trip || !confirm("Restore items back to active To-Buy list?")) {
+    if (!trip) return;
+    if (!(await confirmRestoreTrip())) {
         if (trip) {
             const { error } = await supabaseClient.from('shopping_trips').delete()
                 .eq('id', tripId).eq('household_id', currentHouseholdId);
@@ -2115,6 +2122,28 @@ async function deleteTripPrompt(tripId) {
     const { error } = await supabaseClient.from('shopping_trips').delete()
         .eq('id', tripId).eq('household_id', currentHouseholdId);
     if (error) console.error("Failed to delete restored shopping trip:", error);
+}
+
+function confirmRestoreTrip() {
+    const modal = document.getElementById('restoreTripConfirmation');
+    restoreTripConfirmationReturnFocus = document.activeElement;
+    modal.classList.remove('hidden');
+    document.getElementById('restoreTripNoButton').focus();
+    return new Promise(resolve => {
+        restoreTripConfirmationResolver = resolve;
+    });
+}
+
+function resolveRestoreTripConfirmation(shouldRestore) {
+    if (!restoreTripConfirmationResolver) return;
+    const resolve = restoreTripConfirmationResolver;
+    restoreTripConfirmationResolver = null;
+    document.getElementById('restoreTripConfirmation').classList.add('hidden');
+    resolve(shouldRestore);
+    if (restoreTripConfirmationReturnFocus instanceof HTMLElement) {
+        restoreTripConfirmationReturnFocus.focus();
+    }
+    restoreTripConfirmationReturnFocus = null;
 }
 
 function toggleTripHistory() {

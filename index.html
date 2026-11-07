@@ -452,6 +452,17 @@
         </section>
     </div>
 
+    <div id="restoreTripConfirmation" class="fixed inset-0 z-[80] hidden flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="restoreTripConfirmationTitle" aria-describedby="restoreTripConfirmationMessage">
+        <section class="glass-panel w-full max-w-sm rounded-2xl p-5 shadow-2xl">
+            <h2 id="restoreTripConfirmationTitle" class="text-base font-bold text-white">Restore items?</h2>
+            <p id="restoreTripConfirmationMessage" class="mt-2 text-sm text-slate-300">Restore items back to the active To-Buy list?</p>
+            <div class="mt-5 flex justify-end gap-2">
+                <button id="restoreTripNoButton" type="button" onclick="resolveRestoreTripConfirmation(false)" class="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800">No</button>
+                <button type="button" onclick="resolveRestoreTripConfirmation(true)" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500">Yes</button>
+            </div>
+        </section>
+    </div>
+
     <div id="receiptModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white text-slate-900 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl relative receipt-font text-xs">
             <button onclick="closeReceiptModal()" class="absolute top-4 right-4 w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:text-black transition"><i class="ph ph-x"></i></button>
@@ -520,6 +531,6 @@
     </div>
 </div>
     <script src="auth.js?v=invitation-link-sentence"></script>
-    <script src="app.js?v=receipt-scan"></script>
+    <script src="app.js?v=trip-restore-no"></script>
 </body>
 </html>
