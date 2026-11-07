@@ -2335,10 +2335,11 @@ function parseReceiptText(text) {
     const result = [];
 
     for (const rawLine of text.split(/\r?\n/)) {
-        const line = rawLine.replace(/\s+/g, ' ').trim();
+        const line = rawLine.replace(/[|]/g, ' ').replace(/\s+/g, ' ').trim();
         if (!line || ignoredLine.test(line)) continue;
 
-        const match = line.match(/^(?:(\d+(?:[.,]\d+)?)\s*(?:x|@)\s*)?(.+?)\s+(?:€\s*)?(\d{1,5}[.,]\d{2})\s*(?:€|EUR)?$/i);
+        const normalizedLine = line.replace(/(\d)\s+[.,]\s*(\d{2})(?=\s|$)/g, '$1.$2');
+        const match = normalizedLine.match(/^(?:(\d+(?:[.,]\d+)?)\s*(?:x|@)\s*)?(.+?)\s+(?:€|EUR)?\s*(\d{1,5}[.,]\d{2})\s*(?:€|EUR)?(?:\s+[A-Z])?$/i);
         if (!match) continue;
 
         const quantity = match[1] ? Math.max(1, Math.round(Number(match[1].replace(',', '.')))) : 1;
@@ -2354,6 +2355,123 @@ function parseReceiptText(text) {
     }
 
     return result;
+}
+
+async function prepareReceiptImage(file) {
+    const bitmap = await createImageBitmap(file);
+    try {
+        const scale = Math.min(2.5, 3000 / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(bitmap.width * scale);
+        canvas.height = Math.round(bitmap.height * scale);
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) throw new Error('Could not prepare the receipt image for text recognition.');
+
+        context.fillStyle = '#fff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+        const image = context.getImageData(0, 0, canvas.width, canvas.height);
+        const histogram = new Uint32Array(256);
+        const luminance = new Uint8Array(canvas.width * canvas.height);
+        for (let pixel = 0; pixel < luminance.length; pixel++) {
+            const offset = pixel * 4;
+            const value = Math.round(
+                image.data[offset] * 0.299
+                + image.data[offset + 1] * 0.587
+                + image.data[offset + 2] * 0.114
+            );
+            luminance[pixel] = value;
+            histogram[value]++;
+        }
+
+        const pixelCount = luminance.length;
+        const lowTarget = pixelCount * 0.02;
+        const highTarget = pixelCount * 0.98;
+        let low = 0;
+        let high = 255;
+        let cumulative = 0;
+        for (let value = 0; value < 256; value++) {
+            cumulative += histogram[value];
+            if (cumulative >= lowTarget) {
+                low = value;
+                break;
+            }
+        }
+        cumulative = 0;
+        for (let value = 0; value < 256; value++) {
+            cumulative += histogram[value];
+            if (cumulative >= highTarget) {
+                high = value;
+                break;
+            }
+        }
+        if (high <= low) {
+            low = 0;
+            high = 255;
+        }
+
+        const enhanced = document.createElement('canvas');
+        enhanced.width = canvas.width;
+        enhanced.height = canvas.height;
+        const enhancedContext = enhanced.getContext('2d');
+        if (!enhancedContext) throw new Error('Could not enhance the receipt image.');
+
+        const enhancedImage = enhancedContext.createImageData(canvas.width, canvas.height);
+        const thresholdHistogram = new Uint32Array(256);
+        let sum = 0;
+        for (let pixel = 0; pixel < pixelCount; pixel++) {
+            const value = Math.max(0, Math.min(255, Math.round((luminance[pixel] - low) * 255 / (high - low))));
+            luminance[pixel] = value;
+            thresholdHistogram[value]++;
+            sum += value;
+            const offset = pixel * 4;
+            enhancedImage.data[offset] = value;
+            enhancedImage.data[offset + 1] = value;
+            enhancedImage.data[offset + 2] = value;
+            enhancedImage.data[offset + 3] = 255;
+        }
+        enhancedContext.putImageData(enhancedImage, 0, 0);
+
+        let backgroundWeight = 0;
+        let backgroundSum = 0;
+        let bestVariance = -1;
+        let threshold = 160;
+        for (let value = 0; value < 256; value++) {
+            backgroundWeight += thresholdHistogram[value];
+            if (!backgroundWeight) continue;
+            const foregroundWeight = pixelCount - backgroundWeight;
+            if (!foregroundWeight) break;
+            backgroundSum += value * thresholdHistogram[value];
+            const meanBackground = backgroundSum / backgroundWeight;
+            const meanForeground = (sum - backgroundSum) / foregroundWeight;
+            const variance = backgroundWeight * foregroundWeight
+                * (meanBackground - meanForeground) ** 2;
+            if (variance > bestVariance) {
+                bestVariance = variance;
+                threshold = value;
+            }
+        }
+
+        const thresholded = document.createElement('canvas');
+        thresholded.width = canvas.width;
+        thresholded.height = canvas.height;
+        const thresholdContext = thresholded.getContext('2d');
+        if (!thresholdContext) throw new Error('Could not create a high-contrast receipt image.');
+        const thresholdImage = thresholdContext.createImageData(canvas.width, canvas.height);
+        for (let pixel = 0; pixel < pixelCount; pixel++) {
+            const value = luminance[pixel] < threshold ? 0 : 255;
+            const offset = pixel * 4;
+            thresholdImage.data[offset] = value;
+            thresholdImage.data[offset + 1] = value;
+            thresholdImage.data[offset + 2] = value;
+            thresholdImage.data[offset + 3] = 255;
+        }
+        thresholdContext.putImageData(thresholdImage, 0, 0);
+        return { enhanced, thresholded };
+    } finally {
+        bitmap.close();
+    }
 }
 
 async function processReceiptImage(event) {
@@ -2381,6 +2499,8 @@ async function processReceiptImage(event) {
     let worker;
 
     try {
+        const imageVariants = await prepareReceiptImage(file);
+        if (requestId !== receiptOcrRequestId) return;
         worker = await Tesseract.createWorker('eng', 1, {
             logger: progress => {
                 if (requestId !== receiptOcrRequestId || !progress.status) return;
@@ -2391,12 +2511,29 @@ async function processReceiptImage(event) {
             }
         });
         if (requestId !== receiptOcrRequestId) return;
-        const { data } = await worker.recognize(file);
-        if (requestId !== receiptOcrRequestId) return;
+        const results = [];
+        for (const [index, image] of [imageVariants.enhanced, imageVariants.thresholded].entries()) {
+            await worker.setParameters({
+                tessedit_pageseg_mode: '6',
+                preserve_interword_spaces: '1'
+            });
+            setReceiptScanStatus(`Reading receipt: image pass ${index + 1} of 2…`);
+            const { data } = await worker.recognize(image);
+            if (requestId !== receiptOcrRequestId) return;
+            results.push({
+                items: parseReceiptText(data.text || ''),
+                confidence: Number(data.confidence) || 0
+            });
+        }
 
-        const detectedItems = parseReceiptText(data.text || '');
+        const bestResult = results.reduce((best, result) => {
+            if (!best || result.items.length > best.items.length) return result;
+            if (result.items.length === best.items.length && result.confidence > best.confidence) return result;
+            return best;
+        }, null);
+        const detectedItems = bestResult?.items || [];
         if (!detectedItems.length) {
-            setReceiptScanStatus('No item lines were detected. Try a clearer, well-lit photo, or add the items manually.');
+            setReceiptScanStatus('No item lines were detected. Try a straight, well-lit photo with the full receipt in focus, or add the items manually.');
             return;
         }
 
