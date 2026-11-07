@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#020617">
+    <title>Profile & household — HomeStock</title>
+    <link rel="icon" type="image/png" href="icon.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="tulip-bg min-h-screen text-slate-100 antialiased selection:bg-emerald-600 selection:text-white">
+    <header class="border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-xl">
+        <div class="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
+            <a href="index.html" class="flex items-center gap-3">
+                <span class="h-9 w-9 overflow-hidden"><img src="icon.png" alt="" class="h-full w-full object-cover"></span>
+                <span class="font-bold text-white">HomeStock</span>
+            </a>
+            <a href="index.html" class="flex items-center gap-2 rounded-xl border border-slate-700/60 bg-slate-900/90 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800">
+                <i class="ph ph-arrow-left"></i> Back to HomeStock
+            </a>
+        </div>
+    </header>
+
+    <main class="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6 sm:py-12">
+        <section>
+            <p class="text-sm font-semibold text-emerald-300">Account</p>
+            <h1 class="mt-1 text-3xl font-bold tracking-tight text-white">Profile & household</h1>
+            <p class="mt-2 text-sm text-slate-400">View your account details and manage your shared household.</p>
+        </section>
+
+        <p id="profileStatus" role="status" aria-live="polite" class="hidden rounded-xl border px-4 py-3 text-sm"></p>
+
+        <section class="grid gap-6 lg:grid-cols-5">
+            <div class="glass-panel rounded-2xl p-5 sm:p-6 lg:col-span-2">
+                <div class="mb-5 flex items-center gap-3">
+                    <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-300"><i class="ph ph-user text-2xl"></i></span>
+                    <div>
+                        <h2 class="text-lg font-bold text-white">Your profile</h2>
+                        <p class="text-xs text-slate-400">Account information</p>
+                    </div>
+                </div>
+                <div id="profileNameDisplay" class="flex items-center justify-between gap-3">
+                    <p id="profileName" class="min-w-0 break-words text-sm font-medium text-slate-100">Loading…</p>
+                    <button id="editProfileButton" type="button" onclick="showProfileNameEditor()" class="shrink-0 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-800">Edit profile</button>
+                </div>
+                <form id="profileNameForm" class="hidden space-y-4" onsubmit="event.preventDefault(); saveProfileName();">
+                    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                        <div>
+                            <label for="profileFirstName" class="text-xs font-medium uppercase tracking-wide text-slate-500">First name</label>
+                            <input id="profileFirstName" type="text" autocomplete="given-name" maxlength="80" required class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label for="profileLastName" class="text-xs font-medium uppercase tracking-wide text-slate-500">Last name</label>
+                            <input id="profileLastName" type="text" autocomplete="family-name" maxlength="80" required class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none">
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <button id="saveProfileNameButton" type="submit" class="flex-1 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50">Save profile name</button>
+                        <button type="button" onclick="cancelProfileNameEdit()" class="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800">Cancel</button>
+                    </div>
+                </form>
+                <dl class="mt-5 space-y-4">
+                    <div>
+                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Email</dt>
+                        <dd id="profileEmail" class="mt-1 break-all text-sm text-slate-100">Loading…</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Household role</dt>
+                        <dd id="profileRole" class="mt-1 text-sm capitalize text-slate-100">Loading…</dd>
+                    </div>
+                    <div>
+                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Member since</dt>
+                        <dd id="profileCreatedAt" class="mt-1 text-sm text-slate-100">Loading…</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <div class="space-y-6 lg:col-span-3">
+                <section class="glass-panel rounded-2xl p-5 sm:p-6">
+                    <div class="mb-5 flex items-center gap-3">
+                        <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-300"><i class="ph ph-house-line text-2xl"></i></span>
+                        <div>
+                            <h2 class="text-lg font-bold text-white">Household name</h2>
+                            <p id="householdNameHelp" class="text-xs text-slate-400">Loading household…</p>
+                        </div>
+                    </div>
+                    <form id="householdNameForm" class="flex flex-col gap-3 sm:flex-row" onsubmit="event.preventDefault(); saveHouseholdName();">
+                        <label class="sr-only" for="householdName">Household name</label>
+                        <input id="householdName" type="text" maxlength="60" required placeholder="Enter a household name" class="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none">
+                        <button id="saveHouseholdNameButton" type="submit" class="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">Save name</button>
+                    </form>
+                </section>
+
+                <section class="glass-panel rounded-2xl p-5 sm:p-6">
+                    <div class="mb-5 flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-3">
+                            <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/10 text-blue-300"><i class="ph ph-users-three text-2xl"></i></span>
+                            <div>
+                                <h2 class="text-lg font-bold text-white">Household members</h2>
+                                <p id="memberCount" class="text-xs text-slate-400">Loading members…</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="memberList" class="divide-y divide-slate-800/80"></div>
+                </section>
+            </div>
+        </section>
+    </main>
+    <script src="profile.js?v=profile-name-toggle"></script>
+</body>
+</html>

@@ -117,12 +117,18 @@ async function handleLogin() {
 }
 
 async function handleSignUp() {
+    const firstName = document.getElementById('authFirstName').value.trim();
+    const lastName = document.getElementById('authLastName').value.trim();
     const email = document.getElementById('authEmail').value.trim();
     const password = document.getElementById('authPassword').value;
     const passwordConfirm = document.getElementById('authPasswordConfirm').value;
     const householdMode = document.querySelector('input[name="householdMode"]:checked')?.value || 'create';
     const inviteCode = document.getElementById('householdInviteCode').value.trim();
     const householdName = document.getElementById('householdName').value.trim();
+    if (!firstName || !lastName) {
+        setAuthStatus("Enter your first and last name.", true);
+        return;
+    }
     if (!email || !password) {
         setAuthStatus("Enter your email and password.", true);
         return;
@@ -148,7 +154,11 @@ async function handleSignUp() {
 
     try {
         const confirmationUrl = new URL('signup.html', window.location.href);
-        const userMetadata = {};
+        const userMetadata = {
+            first_name: firstName,
+            last_name: lastName,
+            full_name: `${firstName} ${lastName}`
+        };
         if (householdMode === 'join') {
             localStorage.setItem(pendingInviteKey, inviteCode);
             confirmationUrl.searchParams.set('invite', inviteCode);
