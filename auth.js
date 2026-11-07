@@ -493,14 +493,10 @@ async function copyHouseholdInviteLink() {
     const inviteUrl = new URL('signup.html', window.location.href);
     inviteUrl.searchParams.set('invite', code);
     const invitation = [
-        "You are invited to join our household on HomeStock, our shared platform for coordinating household shopping and pantry inventory.",
+        `Come and join our household on HomeStock using this invitation link: ${inviteUrl.href}`,
         "",
-        "To accept this invitation, please use the link below and create or sign in to your HomeStock account. You may also be asked to enter the invitation code.",
-        "",
-        `Invitation code: ${code}`,
-        `Invitation link: ${inviteUrl.href}`,
-        "",
-        "We look forward to having you join us."
+        `If prompted, enter this invitation code: ${code}`,
+        "You can create a HomeStock account or sign in to accept the invitation."
     ].join('\n');
     try {
         await navigator.clipboard.writeText(invitation);
