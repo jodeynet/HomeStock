@@ -2297,11 +2297,15 @@ function closeReceiptModal() { document.getElementById('receiptModal').classList
 
 function openReceiptScan() {
     receiptOcrRequestId++;
+    const cameraButton = document.getElementById('receiptCameraButton');
     const chooseButton = document.getElementById('receiptChooseImageButton');
+    cameraButton.disabled = false;
+    cameraButton.classList.remove('opacity-50');
     chooseButton.disabled = false;
     chooseButton.classList.remove('opacity-50');
     document.getElementById('receiptSaveButton').disabled = false;
     document.getElementById('receiptSaveButton').textContent = 'Add to inventory';
+    document.getElementById('receiptCameraInput').value = '';
     document.getElementById('receiptImageInput').value = '';
     document.getElementById('receiptReviewRows').replaceChildren();
     document.getElementById('receiptReviewSection').classList.add('hidden');
@@ -2316,6 +2320,7 @@ function closeReceiptScan() {
     const modal = document.getElementById('receiptScanModal');
     modal.classList.add('hidden');
     modal.classList.remove('flex');
+    document.getElementById('receiptCameraInput').value = '';
     document.getElementById('receiptImageInput').value = '';
 }
 
@@ -2352,7 +2357,9 @@ function parseReceiptText(text) {
 }
 
 async function processReceiptImage(event) {
-    const file = event.target.files?.[0];
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/')) {
         setReceiptScanStatus('Choose an image file to scan.');
@@ -2364,7 +2371,10 @@ async function processReceiptImage(event) {
     }
 
     const requestId = ++receiptOcrRequestId;
+    const cameraButton = document.getElementById('receiptCameraButton');
     const chooseButton = document.getElementById('receiptChooseImageButton');
+    cameraButton.disabled = true;
+    cameraButton.classList.add('opacity-50');
     chooseButton.disabled = true;
     chooseButton.classList.add('opacity-50');
     setReceiptScanStatus('Preparing receipt scan…');
@@ -2409,6 +2419,8 @@ async function processReceiptImage(event) {
             }
         }
         if (requestId === receiptOcrRequestId) {
+            cameraButton.disabled = false;
+            cameraButton.classList.remove('opacity-50');
             chooseButton.disabled = false;
             chooseButton.classList.remove('opacity-50');
         }

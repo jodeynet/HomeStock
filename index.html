@@ -426,9 +426,13 @@
             </header>
             <div class="space-y-4 overflow-y-auto p-4 sm:p-5">
                 <div id="receiptScanInputSection" class="space-y-3">
-                    <input id="receiptImageInput" type="file" accept="image/*" capture="environment" class="hidden" onchange="processReceiptImage(event)">
-                    <button id="receiptChooseImageButton" type="button" onclick="document.getElementById('receiptImageInput').click()" class="flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500">
-                        <i class="ph ph-camera text-lg"></i> Take photo or choose image
+                    <input id="receiptCameraInput" type="file" accept="image/*" capture="environment" class="hidden" onchange="processReceiptImage(event)">
+                    <input id="receiptImageInput" type="file" accept="image/*" class="hidden" onchange="processReceiptImage(event)">
+                    <button id="receiptCameraButton" type="button" onclick="document.getElementById('receiptCameraInput').click()" class="flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500">
+                        <i class="ph ph-camera text-lg"></i> Take a photo
+                    </button>
+                    <button id="receiptChooseImageButton" type="button" onclick="document.getElementById('receiptImageInput').click()" class="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-800">
+                        <i class="ph ph-image text-lg"></i> Choose from photos
                     </button>
                 </div>
                 <p id="receiptScanStatus" role="status" aria-live="polite" class="hidden rounded-xl bg-slate-950/70 px-3 py-2 text-xs text-slate-300"></p>
@@ -531,6 +535,6 @@
     </div>
 </div>
     <script src="auth.js?v=invitation-link-sentence"></script>
-    <script src="app.js?v=trip-restore-no"></script>
+    <script src="app.js?v=receipt-camera-library-options"></script>
 </body>
 </html>
